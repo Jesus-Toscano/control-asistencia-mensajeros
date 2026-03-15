@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Control de Asistencia - Mensajeros</title>
+    <meta name="description" content="Sistema de control de asistencia para mensajeros con geolocalización y reportes">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- ============================================ -->
+    <!-- PANTALLA DE CARGA                            -->
+    <!-- ============================================ -->
+    <div id="splash-screen" class="splash-screen">
+        <div class="splash-content">
+            <div class="splash-icon">
+                <span class="material-icons-round">delivery_dining</span>
+            </div>
+            <h1 class="splash-title">Control de Asistencia</h1>
+            <p class="splash-subtitle">Mensajeros</p>
+            <div class="splash-loader">
+                <div class="splash-loader-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- APLICACIÓN PRINCIPAL                         -->
+    <!-- ============================================ -->
+    <div id="app" class="app hidden">
+        
+        <!-- VISTA: LOGIN -->
+        <div id="view-login" class="view active">
+            <div class="login-container">
+                <div class="login-header">
+                    <div class="login-icon-wrapper">
+                        <span class="material-icons-round">fingerprint</span>
+                    </div>
+                    <h1>Bienvenido</h1>
+                    <p>Selecciona tu usuario e ingresa tu contraseña</p>
+                </div>
+                
+                <form id="login-form" class="login-form" autocomplete="off">
+                    <div class="form-group">
+                        <label for="select-usuario">
+                            <span class="material-icons-round">person</span>
+                            Usuario
+                        </label>
+                        <select id="select-usuario" required>
+                            <option value="">Selecciona tu nombre...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="input-password">
+                            <span class="material-icons-round">lock</span>
+                            Contraseña
+                        </label>
+                        <div class="password-wrapper">
+                            <input type="password" id="input-password" placeholder="Ingresa tu contraseña" required>
+                            <button type="button" id="btn-toggle-password" class="btn-icon" tabindex="-1">
+                                <span class="material-icons-round">visibility_off</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="location-status" class="location-status">
+                        <span class="material-icons-round spinning">my_location</span>
+                        <span>Obteniendo ubicación...</span>
+                    </div>
+                    
+                    <button type="submit" id="btn-login" class="btn btn-primary btn-block" disabled>
+                        <span class="material-icons-round">login</span>
+                        Iniciar Sesión
+                    </button>
+                </form>
+                
+                <div class="login-footer">
+                    <span class="material-icons-round">info</span>
+                    <span>Se requiere acceso a la ubicación para registrar tu asistencia</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISTA: SESIÓN ACTIVA -->
+        <div id="view-session" class="view">
+            <div class="session-container">
+                <!-- Header -->
+                <div class="session-header">
+                    <div class="session-user-info">
+                        <div class="avatar" id="session-avatar">
+                            <span class="material-icons-round">person</span>
+                        </div>
+                        <div>
+                            <h2 id="session-user-name">Usuario</h2>
+                            <span class="badge badge-active">
+                                <span class="pulse-dot"></span>
+                                Sesión Activa
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timer -->
+                <div class="timer-card">
+                    <div class="timer-label">Tiempo en sesión</div>
+                    <div class="timer-display" id="session-timer">00:00:00</div>
+                    <div class="timer-date" id="session-date">--</div>
+                </div>
+
+                <!-- Info Cards -->
+                <div class="info-grid">
+                    <div class="info-card">
+                        <div class="info-card-icon green">
+                            <span class="material-icons-round">schedule</span>
+                        </div>
+                        <div class="info-card-content">
+                            <span class="info-card-label">Hora de Entrada</span>
+                            <span class="info-card-value" id="session-hora-entrada">--:--</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-card">
+                        <div class="info-card-icon blue">
+                            <span class="material-icons-round">calendar_today</span>
+                        </div>
+                        <div class="info-card-content">
+                            <span class="info-card-label">Fecha</span>
+                            <span class="info-card-value" id="session-fecha">--/--/----</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-card">
+                        <div class="info-card-icon purple">
+                            <span class="material-icons-round">location_on</span>
+                        </div>
+                        <div class="info-card-content">
+                            <span class="info-card-label">Ubicación Entrada</span>
+                            <span class="info-card-value small" id="session-ubicacion">Obteniendo...</span>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-icon orange">
+                            <span class="material-icons-round">explore</span>
+                        </div>
+                        <div class="info-card-content">
+                            <span class="info-card-label">Coordenadas</span>
+                            <span class="info-card-value small" id="session-coords">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botón cerrar sesión -->
+                <button id="btn-cerrar-sesion" class="btn btn-danger btn-block">
+                    <span class="material-icons-round">logout</span>
+                    Cerrar Sesión
+                </button>
+            </div>
+        </div>
+
+        <!-- VISTA: ADMIN DASHBOARD -->
+        <div id="view-admin" class="view">
+            <div class="admin-container">
+                <!-- Header Admin -->
+                <div class="admin-header">
+                    <div class="admin-header-left">
+                        <h1>
+                            <span class="material-icons-round">admin_panel_settings</span>
+                            Panel Administrativo
+                        </h1>
+                        <p>Gestión de asistencia de mensajeros</p>
+                    </div>
+                    <button id="btn-admin-logout" class="btn btn-outline btn-sm">
+                        <span class="material-icons-round">logout</span>
+                        Salir
+                    </button>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon green">
+                            <span class="material-icons-round">people</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-activos">0</span>
+                            <span class="stat-label">Sesiones Activas</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                            <span class="material-icons-round">event_available</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-hoy">0</span>
+                            <span class="stat-label">Registros Hoy</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon purple">
+                            <span class="material-icons-round">bar_chart</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-semana">0</span>
+                            <span class="stat-label">Esta Semana</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">
+                            <span class="material-icons-round">groups</span>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-usuarios">0</span>
+                            <span class="stat-label">Total Mensajeros</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filtros y Acciones -->
+                <div class="admin-toolbar">
+                    <div class="filter-group">
+                        <div class="filter-input">
+                            <span class="material-icons-round">calendar_today</span>
+                            <input type="date" id="filter-fecha-inicio" title="Fecha inicio">
+                        </div>
+                        <div class="filter-input">
+                            <span class="material-icons-round">event</span>
+                            <input type="date" id="filter-fecha-fin" title="Fecha fin">
+                        </div>
+                        <div class="filter-input">
+                            <span class="material-icons-round">person_search</span>
+                            <select id="filter-usuario" title="Filtrar por usuario">
+                                <option value="">Todos los mensajeros</option>
+                            </select>
+                        </div>
+                        <div class="filter-input">
+                            <span class="material-icons-round">filter_list</span>
+                            <select id="filter-estado" title="Filtrar por estado">
+                                <option value="">Todos los estados</option>
+                                <option value="abierta">Abiertas</option>
+                                <option value="cerrada">Cerradas</option>
+                            </select>
+                        </div>
+                        <button id="btn-filtrar" class="btn btn-primary btn-sm">
+                            <span class="material-icons-round">search</span>
+                            Filtrar
+                        </button>
+                        <button id="btn-limpiar-filtros" class="btn btn-ghost btn-sm">
+                            <span class="material-icons-round">clear_all</span>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="action-group">
+                        <button id="btn-refresh" class="btn btn-ghost btn-sm" title="Actualizar datos">
+                            <span class="material-icons-round">refresh</span>
+                        </button>
+                        <button id="btn-export-csv" class="btn btn-success btn-sm">
+                            <span class="material-icons-round">download</span>
+                            Exportar CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabla de Registros -->
+                <div class="table-container">
+                    <div class="table-header-bar">
+                        <h3>
+                            <span class="material-icons-round">list_alt</span>
+                            Registros de Asistencia
+                        </h3>
+                        <span class="record-count" id="record-count">0 registros</span>
+                    </div>
+                    <div class="table-scroll">
+                        <table id="tabla-sesiones">
+                            <thead>
+                                <tr>
+                                    <th>Mensajero</th>
+                                    <th>Fecha</th>
+                                    <th>Entrada</th>
+                                    <th>Salida</th>
+                                    <th>Horas</th>
+                                    <th>Ubicación Entrada</th>
+                                    <th>Ubicación Salida</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-body">
+                                <tr class="empty-row">
+                                    <td colspan="8">
+                                        <div class="empty-state">
+                                            <span class="material-icons-round">inbox</span>
+                                            <p>No hay registros para mostrar</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- MODAL: CERRAR SESIÓN                         -->
+    <!-- ============================================ -->
+    <div id="modal-cerrar" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-icon warning">
+                    <span class="material-icons-round">warning</span>
+                </div>
+                <h3>Cerrar Sesión</h3>
+                <p>Ingresa tu contraseña para confirmar el cierre de tu jornada</p>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="modal-password">
+                        <span class="material-icons-round">lock</span>
+                        Contraseña
+                    </label>
+                    <input type="password" id="modal-password" placeholder="Ingresa tu contraseña">
+                </div>
+                <div id="modal-location-status" class="location-status">
+                    <span class="material-icons-round spinning">my_location</span>
+                    <span>Obteniendo ubicación de salida...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-cancel" class="btn btn-ghost">Cancelar</button>
+                <button id="btn-modal-confirm" class="btn btn-danger">
+                    <span class="material-icons-round">logout</span>
+                    Confirmar Cierre
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TOAST NOTIFICATIONS                          -->
+    <!-- ============================================ -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- App Script -->
+    <script src="app.js"></script>
+</body>
+</html>
