@@ -1405,3 +1405,30 @@ tbody tr:last-child td {
     animation: fadeInUp 0.25s ease;
 }
 
+/* === DEVICE INFO CELL (Admin Table) === */
+.device-info-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+
+.device-sub {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.device-ip {
+    font-size: 0.7rem;
+    color: var(--orange);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.device-fp {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+

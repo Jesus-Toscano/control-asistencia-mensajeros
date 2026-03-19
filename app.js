@@ -238,26 +238,58 @@ function getDeviceInfo() {
     const ua = navigator.userAgent;
     // iPhone
     const iphoneMatch = ua.match(/iPhone OS (\d+_\d+)/);
-    if (iphoneMatch) {
-        return `iPhone iOS ${iphoneMatch[1].replace('_', '.')}`;
-    }
+    if (iphoneMatch) return `iPhone iOS ${iphoneMatch[1].replace('_', '.')}`;
     // iPad
-    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
-        return 'iPad';
-    }
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'iPad';
     // Android — intentar obtener modelo
     const androidMatch = ua.match(/Android [\d.]+; ([^)]+)/);
     if (androidMatch) {
-        const model = androidMatch[1].trim().split(' BUILD')[0];
+        const model = androidMatch[1].trim().split(' BUILD')[0].split(';')[0].trim();
         return `Android - ${model}`;
     }
     // Windows
+    if (/Windows NT 10/.test(ua)) return 'Windows 10/11 PC';
     if (/Windows/.test(ua)) return 'Windows PC';
     // Mac
     if (/Macintosh/.test(ua)) return 'Mac';
     // Linux
     if (/Linux/.test(ua)) return 'Linux PC';
-    return 'Dispositivo desconocido';
+    return ua.substring(0, 40); // fallback: primeros 40 chars del UA
+}
+
+async function getPublicIP() {
+    try {
+        const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
+        const data = await res.json();
+        return data.ip || null;
+    } catch {
+        return null;
+    }
+}
+
+function getBrowserFingerprint() {
+    const parts = [
+        screen.width + 'x' + screen.height,
+        navigator.language || '',
+        Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        navigator.platform || '',
+        navigator.hardwareConcurrency || ''
+    ].join('|');
+    // Hash simple
+    let hash = 0;
+    for (let i = 0; i < parts.length; i++) {
+        hash = ((hash << 5) - hash) + parts.charCodeAt(i);
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16).toUpperCase().substring(0, 6);
+}
+
+async function getFullDeviceInfo() {
+    const device = getDeviceInfo();
+    const ip = await getPublicIP();
+    const fp = getBrowserFingerprint();
+    const ipPart = ip ? ` | IP: ${ip}` : '';
+    return { label: `${device}${ipPart} | ID:${fp}`, ip: ip || 'N/A' };
 }
 
 function updateLocationStatus(element, status, message) {
@@ -308,8 +340,13 @@ async function loadUsuarios() {
         });
 
         // Listener para mostrar/ocultar sección de vehículo
-        select.removeEventListener('change', onUserSelectChange);
-        select.addEventListener('change', onUserSelectChange);
+        // Se usa variable de bandera para evitar problema con async en removeEventListener
+        if (!select._vehiculoListenerAdded) {
+            select.addEventListener('change', onUserSelectChange);
+            select._vehiculoListenerAdded = true;
+        }
+        // Ocultar la sección al recargar usuarios
+        DOM.vehiculoSection().classList.add('hidden');
 
         return data;
     } catch (error) {
@@ -322,8 +359,17 @@ async function loadUsuarios() {
 async function onUserSelectChange() {
     const select = DOM.selectUsuario();
     const selected = select.options[select.selectedIndex];
-    const usaVehiculo = selected && selected.dataset.usaVehiculo === '1';
     const section = DOM.vehiculoSection();
+
+    // Si no hay usuario seleccionado (opción en blanco), ocultar siempre
+    if (!selected || !selected.value) {
+        section.classList.add('hidden');
+        DOM.selectVehiculo().removeAttribute('required');
+        DOM.inputKmInicial().removeAttribute('required');
+        return;
+    }
+
+    const usaVehiculo = selected.dataset.usaVehiculo === '1';
 
     if (usaVehiculo) {
         section.classList.remove('hidden');
@@ -334,6 +380,8 @@ async function onUserSelectChange() {
         section.classList.add('hidden');
         DOM.selectVehiculo().removeAttribute('required');
         DOM.inputKmInicial().removeAttribute('required');
+        DOM.inputKmInicial().value = '';
+        DOM.selectVehiculo().value = '';
     }
 }
 
@@ -415,8 +463,9 @@ async function handleLogin(event) {
 
         AppState.currentUser = user;
 
-        // Detectar dispositivo
-        const dispositivo = getDeviceInfo();
+        // Detectar dispositivo + IP pública + fingerprint
+        const deviceInfo = await getFullDeviceInfo();
+        const dispositivo = deviceInfo.label;
 
         // Si es admin, ir al dashboard
         if (user.rol === 'admin') {
@@ -880,6 +929,13 @@ function renderTable(sesiones) {
               : s.dispositivo.includes('Android') ? 'smartphone' : 'computer')
             : 'device_unknown';
 
+        // Extraer IP del campo dispositivo si existe
+        const ipMatch = s.dispositivo ? s.dispositivo.match(/IP: ([\d.]+)/) : null;
+        const ipLabel = ipMatch ? ipMatch[1] : '--';
+        const fpMatch = s.dispositivo ? s.dispositivo.match(/ID:([A-F0-9]+)/) : null;
+        const fpLabel = fpMatch ? fpMatch[1] : '--';
+        const deviceLabel = s.dispositivo ? s.dispositivo.split(' | ')[0] : 'Desconocido';
+
         return `
             <tr>
                 <td><strong>${nombreUsuario}</strong></td>
@@ -890,10 +946,16 @@ function renderTable(sesiones) {
                 <td>${ubicEntrada}</td>
                 <td>${ubicSalida}</td>
                 <td>
-                    <span class="device-badge" title="${s.dispositivo || 'Desconocido'}">
-                        <span class="material-icons-round" style="font-size:14px">${dispositivoIcon}</span>
-                        ${truncate(s.dispositivo || 'Desconocido', 18)}
-                    </span>
+                    <div class="device-info-cell" title="${s.dispositivo || 'Sin datos'}">
+                        <span class="device-badge">
+                            <span class="material-icons-round" style="font-size:14px">${dispositivoIcon}</span>
+                            ${truncate(deviceLabel, 16)}
+                        </span>
+                        <div class="device-sub">
+                            <span class="device-ip">IP: ${ipLabel}</span>
+                            <span class="device-fp">ID: ${fpLabel}</span>
+                        </div>
+                    </div>
                 </td>
                 <td>
                     <span class="table-badge ${s.estado === 'abierta' ? 'open' : 'closed'}">
