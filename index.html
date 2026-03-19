@@ -311,6 +311,10 @@
                             <span class="material-icons-round">two_wheeler</span>
                             Bitácora Vehículos
                         </button>
+                        <button class="admin-tab" id="tab-usuarios" onclick="switchAdminTab('usuarios')">
+                            <span class="material-icons-round">group</span>
+                            Usuarios
+                        </button>
                     </div>
 
                     <!-- Panel: Asistencia -->
@@ -358,7 +362,13 @@
                                 <span class="material-icons-round">two_wheeler</span>
                                 Bitácora de Uso de Vehículos
                             </h3>
-                            <span class="record-count" id="bitacora-count">0 registros</span>
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <span class="record-count" id="bitacora-count">0 registros</span>
+                                <button id="btn-export-bitacora" class="btn btn-success btn-sm" onclick="exportBitacoraToCSV()">
+                                    <span class="material-icons-round">download</span>
+                                    Exportar CSV
+                                </button>
+                            </div>
                         </div>
                         <div class="table-scroll">
                             <table id="tabla-bitacora">
@@ -385,6 +395,20 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Panel: Usuarios -->
+                    <div id="panel-usuarios" class="hidden">
+                        <div class="table-header-bar">
+                            <h3>
+                                <span class="material-icons-round">group</span>
+                                Gestión de Usuarios
+                            </h3>
+                            <span class="record-count" id="usuarios-count">0 usuarios</span>
+                        </div>
+                        <div id="usuarios-grid" class="usuarios-grid">
+                            <!-- Cards se generan desde JS -->
                         </div>
                     </div>
                 </div>

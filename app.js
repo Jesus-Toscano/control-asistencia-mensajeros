@@ -1042,11 +1042,153 @@ function renderBitacoraTable(registros) {
 // TABS ADMIN
 // ============================================
 function switchAdminTab(tab) {
-    document.getElementById('panel-asistencia').classList.toggle('hidden', tab !== 'asistencia');
-    document.getElementById('panel-bitacora').classList.toggle('hidden', tab !== 'bitacora');
-    document.getElementById('tab-asistencia').classList.toggle('active', tab === 'asistencia');
-    document.getElementById('tab-bitacora').classList.toggle('active', tab === 'bitacora');
+    ['asistencia', 'bitacora', 'usuarios'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.toggle('hidden', tab !== t);
+        document.getElementById(`tab-${t}`).classList.toggle('active', tab === t);
+    });
     if (tab === 'bitacora') loadBitacora();
+    if (tab === 'usuarios') loadUsuariosAdmin();
+}
+
+// ============================================
+// CSV BITÁCORA DE VEHÍCULOS
+// ============================================
+function exportBitacoraToCSV() {
+    if (!AppState.bitacora || AppState.bitacora.length === 0) {
+        showToast('warning', 'Sin Datos', 'No hay registros de vehículos para exportar');
+        return;
+    }
+
+    const headers = [
+        'Mensajero',
+        'Fecha',
+        'Vehículo',
+        'Placa',
+        'Km Inicial',
+        'Km Final',
+        'Km Recorridos',
+        'Estado Sesión'
+    ];
+
+    const rows = AppState.bitacora.map(r => {
+        const fecha = new Date(r.created_at).toLocaleDateString('es-MX');
+        const kmRec = r.km_final != null ? r.km_final - r.km_inicial : '';
+        return [
+            r.usuarios?.nombre || '',
+            fecha,
+            r.vehiculos?.descripcion || '',
+            r.vehiculos?.placa || '',
+            r.km_inicial ?? '',
+            r.km_final ?? '',
+            kmRec,
+            r.sesiones?.estado || ''
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const fileName = `bitacora_vehiculos_${new Date().toISOString().split('T')[0]}.csv`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Exportado', `${fileName} descargado`);
+}
+
+// ============================================
+// GESTIÓN DE USUARIOS (PANEL ADMIN)
+// ============================================
+async function loadUsuariosAdmin() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('usuarios')
+            .select('id, nombre, rol, activo, usa_vehiculo')
+            .eq('activo', true)
+            .order('nombre');
+        if (error) throw error;
+        renderUsuariosGrid(data || []);
+    } catch (err) {
+        console.error('Error cargando usuarios admin:', err);
+        showToast('error', 'Error', 'No se pudo cargar la lista de usuarios');
+    }
+}
+
+function renderUsuariosGrid(usuarios) {
+    const grid = document.getElementById('usuarios-grid');
+    const count = document.getElementById('usuarios-count');
+    count.textContent = `${usuarios.length} usuario${usuarios.length !== 1 ? 's' : ''}`;
+
+    if (!usuarios.length) {
+        grid.innerHTML = '<div class="empty-state"><span class="material-icons-round">group_off</span><p>No hay usuarios registrados</p></div>';
+        return;
+    }
+
+    grid.innerHTML = usuarios.map(u => {
+        const rolIcon = u.rol === 'admin' ? 'admin_panel_settings' : 'person';
+        const rolColor = u.rol === 'admin' ? 'purple' : 'blue';
+        return `
+            <div class="usuario-card" id="card-${u.id}">
+                <div class="usuario-card-header">
+                    <div class="info-card-icon ${rolColor}">
+                        <span class="material-icons-round">${rolIcon}</span>
+                    </div>
+                    <div>
+                        <div class="usuario-nombre">${u.nombre}</div>
+                        <div class="usuario-rol">${u.rol === 'admin' ? 'Administrador' : 'Mensajero'}</div>
+                    </div>
+                </div>
+                <div class="usuario-card-footer">
+                    <span class="vehicle-label">
+                        <span class="material-icons-round">two_wheeler</span>
+                        Usa vehículo
+                    </span>
+                    <button
+                        class="toggle-btn ${u.usa_vehiculo ? 'active' : ''}"
+                        onclick="toggleVehiculo('${u.id}', ${u.usa_vehiculo})"
+                        id="toggle-${u.id}"
+                        title="${u.usa_vehiculo ? 'Quitar vehículo' : 'Asignar vehículo'}"
+                    >
+                        <span class="toggle-track">
+                            <span class="toggle-thumb"></span>
+                        </span>
+                    </button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+async function toggleVehiculo(userId, currentValue) {
+    const newValue = !currentValue;
+    const btn = document.getElementById(`toggle-${userId}`);
+    if (btn) btn.disabled = true;
+
+    try {
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .update({ usa_vehiculo: newValue })
+            .eq('id', userId);
+        if (error) throw error;
+
+        // Actualizar UI sin recargar todo
+        if (btn) {
+            btn.classList.toggle('active', newValue);
+            btn.title = newValue ? 'Quitar vehículo' : 'Asignar vehículo';
+            btn.onclick = () => toggleVehiculo(userId, newValue);
+        }
+        // Actualizar en el select de login también
+        const opt = DOM.selectUsuario().querySelector(`option[value="${userId}"]`);
+        if (opt) opt.dataset.usaVehiculo = newValue ? '1' : '0';
+
+        showToast('success', 'Actualizado', newValue ? 'Vehículo asignado' : 'Vehículo removido');
+    } catch (err) {
+        console.error('Error actualizando usuario:', err);
+        showToast('error', 'Error', 'No se pudo actualizar el usuario');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ============================================
