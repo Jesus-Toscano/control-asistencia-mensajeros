@@ -44,10 +44,13 @@ const AppState = {
     currentView: 'view-login',
     currentUser: null,
     currentSession: null,
+    currentBitacora: null,
     location: null,
     timerInterval: null,
     usuarios: [],
     sesiones: [],
+    vehiculos: [],
+    bitacora: [],
 };
 
 // ============================================
@@ -105,6 +108,17 @@ const DOM = {
     btnExportCSV: () => document.getElementById('btn-export-csv'),
     tablaBody: () => document.getElementById('tabla-body'),
     recordCount: () => document.getElementById('record-count'),
+    bitacoraBody: () => document.getElementById('bitacora-body'),
+    bitacoraCount: () => document.getElementById('bitacora-count'),
+
+    // Vehicle form in login
+    vehiculoSection: () => document.getElementById('vehiculo-section'),
+    selectVehiculo: () => document.getElementById('select-vehiculo'),
+    inputKmInicial: () => document.getElementById('input-km-inicial'),
+
+    // Modal km final
+    modalKmSection: () => document.getElementById('modal-km-section'),
+    modalKmFinal: () => document.getElementById('modal-km-final'),
 
     // Toast
     toastContainer: () => document.getElementById('toast-container'),
@@ -208,7 +222,6 @@ async function reverseGeocode(lat, lng) {
         );
         const data = await response.json();
         if (data.display_name) {
-            // Acortar la dirección
             const parts = data.display_name.split(',').slice(0, 4);
             return parts.join(',').trim();
         }
@@ -216,6 +229,35 @@ async function reverseGeocode(lat, lng) {
     } catch {
         return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
+}
+
+// ============================================
+// DETECCIÓN DE DISPOSITIVO
+// ============================================
+function getDeviceInfo() {
+    const ua = navigator.userAgent;
+    // iPhone
+    const iphoneMatch = ua.match(/iPhone OS (\d+_\d+)/);
+    if (iphoneMatch) {
+        return `iPhone iOS ${iphoneMatch[1].replace('_', '.')}`;
+    }
+    // iPad
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
+        return 'iPad';
+    }
+    // Android — intentar obtener modelo
+    const androidMatch = ua.match(/Android [\d.]+; ([^)]+)/);
+    if (androidMatch) {
+        const model = androidMatch[1].trim().split(' BUILD')[0];
+        return `Android - ${model}`;
+    }
+    // Windows
+    if (/Windows/.test(ua)) return 'Windows PC';
+    // Mac
+    if (/Macintosh/.test(ua)) return 'Mac';
+    // Linux
+    if (/Linux/.test(ua)) return 'Linux PC';
+    return 'Dispositivo desconocido';
 }
 
 function updateLocationStatus(element, status, message) {
@@ -246,7 +288,7 @@ async function loadUsuarios() {
     try {
         const { data, error } = await supabaseClient
             .from('usuarios')
-            .select('id, nombre, rol, activo')
+            .select('id, nombre, rol, activo, usa_vehiculo')
             .eq('activo', true)
             .order('nombre');
 
@@ -261,14 +303,60 @@ async function loadUsuarios() {
             option.value = user.id;
             option.textContent = user.nombre;
             option.dataset.rol = user.rol;
+            option.dataset.usaVehiculo = user.usa_vehiculo ? '1' : '0';
             select.appendChild(option);
         });
+
+        // Listener para mostrar/ocultar sección de vehículo
+        select.removeEventListener('change', onUserSelectChange);
+        select.addEventListener('change', onUserSelectChange);
 
         return data;
     } catch (error) {
         console.error('Error cargando usuarios:', error);
         showToast('error', 'Error', 'No se pudieron cargar los usuarios');
         return [];
+    }
+}
+
+async function onUserSelectChange() {
+    const select = DOM.selectUsuario();
+    const selected = select.options[select.selectedIndex];
+    const usaVehiculo = selected && selected.dataset.usaVehiculo === '1';
+    const section = DOM.vehiculoSection();
+
+    if (usaVehiculo) {
+        section.classList.remove('hidden');
+        DOM.selectVehiculo().setAttribute('required', 'required');
+        DOM.inputKmInicial().setAttribute('required', 'required');
+        await loadVehiculos();
+    } else {
+        section.classList.add('hidden');
+        DOM.selectVehiculo().removeAttribute('required');
+        DOM.inputKmInicial().removeAttribute('required');
+    }
+}
+
+async function loadVehiculos() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('vehiculos')
+            .select('id, placa, descripcion')
+            .eq('activo', true)
+            .order('placa');
+        if (error) throw error;
+        AppState.vehiculos = data || [];
+        const select = DOM.selectVehiculo();
+        select.innerHTML = '<option value="">Selecciona un vehículo...</option>';
+        data.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = `${v.placa}${v.descripcion ? ' — ' + v.descripcion : ''}`;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Error cargando vehículos:', err);
     }
 }
 
@@ -280,10 +368,23 @@ async function handleLogin(event) {
 
     const userId = DOM.selectUsuario().value;
     const password = DOM.inputPassword().value;
+    const select = DOM.selectUsuario();
+    const selectedOption = select.options[select.selectedIndex];
+    const usaVehiculo = selectedOption && selectedOption.dataset.usaVehiculo === '1';
 
     if (!userId || !password) {
         showToast('warning', 'Campos Requeridos', 'Selecciona tu usuario y escribe tu contraseña');
         return;
+    }
+
+    // Validar campos de vehículo si aplica
+    if (usaVehiculo) {
+        const vehiculoId = DOM.selectVehiculo().value;
+        const kmInicial = DOM.inputKmInicial().value;
+        if (!vehiculoId || !kmInicial) {
+            showToast('warning', 'Bitácora Requerida', 'Selecciona el vehículo y anota el km inicial');
+            return;
+        }
     }
 
     // Verificar ubicación
@@ -297,7 +398,7 @@ async function handleLogin(event) {
     btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Verificando...';
 
     try {
-        // Verificar credenciales contra Supabase
+        // Verificar credenciales
         const { data: user, error } = await supabaseClient
             .from('usuarios')
             .select('*')
@@ -314,6 +415,9 @@ async function handleLogin(event) {
 
         AppState.currentUser = user;
 
+        // Detectar dispositivo
+        const dispositivo = getDeviceInfo();
+
         // Si es admin, ir al dashboard
         if (user.rol === 'admin') {
             await loadAdminDashboard();
@@ -329,8 +433,16 @@ async function handleLogin(event) {
                 .maybeSingle();
 
             if (openSession) {
-                // Restaurar sesión existente
                 AppState.currentSession = openSession;
+                // Recuperar bitácora de vehículo si aplica
+                if (user.usa_vehiculo) {
+                    const { data: bv } = await supabaseClient
+                        .from('bitacora_vehiculos')
+                        .select('*')
+                        .eq('sesion_id', openSession.id)
+                        .maybeSingle();
+                    AppState.currentBitacora = bv || null;
+                }
                 showActiveSession(openSession);
                 navigateTo('view-session');
                 showToast('info', 'Sesión Restaurada', 'Tu sesión anterior sigue activa');
@@ -346,7 +458,8 @@ async function handleLogin(event) {
                         latitud_inicio: AppState.location.lat,
                         longitud_inicio: AppState.location.lng,
                         direccion_inicio: direccion,
-                        estado: 'abierta'
+                        estado: 'abierta',
+                        dispositivo: dispositivo
                     })
                     .select()
                     .single();
@@ -354,6 +467,24 @@ async function handleLogin(event) {
                 if (sessionError) throw sessionError;
 
                 AppState.currentSession = newSession;
+
+                // Guardar bitácora de vehículo si aplica
+                if (user.usa_vehiculo) {
+                    const vehiculoId = DOM.selectVehiculo().value;
+                    const kmInicial = parseInt(DOM.inputKmInicial().value);
+                    const { data: bv } = await supabaseClient
+                        .from('bitacora_vehiculos')
+                        .insert({
+                            sesion_id: newSession.id,
+                            usuario_id: user.id,
+                            vehiculo_id: vehiculoId,
+                            km_inicial: kmInicial
+                        })
+                        .select()
+                        .single();
+                    AppState.currentBitacora = bv || null;
+                }
+
                 showActiveSession(newSession);
                 navigateTo('view-session');
                 showToast('success', '¡Sesión Iniciada!', `Bienvenido ${user.nombre}, tu asistencia fue registrada`);
@@ -362,6 +493,7 @@ async function handleLogin(event) {
 
         // Limpiar formulario
         DOM.inputPassword().value = '';
+        DOM.inputKmInicial() && (DOM.inputKmInicial().value = '');
     } catch (error) {
         console.error('Error en login:', error);
         showToast('error', 'Error', 'Ocurrió un error al iniciar sesión. Intenta de nuevo.');
@@ -446,6 +578,15 @@ function openCloseModal() {
     DOM.modalPassword().value = '';
     DOM.modalPassword().focus();
 
+    // Mostrar campo km final si el usuario usa vehículo
+    const kmSection = DOM.modalKmSection();
+    if (AppState.currentUser && AppState.currentUser.usa_vehiculo && AppState.currentBitacora) {
+        kmSection.classList.remove('hidden');
+        DOM.modalKmFinal().value = '';
+    } else {
+        kmSection.classList.add('hidden');
+    }
+
     // Obtener ubicación de salida
     updateLocationStatus(DOM.modalLocationStatus(), 'loading', 'Obteniendo ubicación de salida...');
     getCurrentLocation()
@@ -481,6 +622,20 @@ async function handleCloseSession() {
         return;
     }
 
+    // Validar km final si aplica
+    if (AppState.currentUser.usa_vehiculo && AppState.currentBitacora) {
+        const kmFinal = DOM.modalKmFinal().value;
+        if (!kmFinal) {
+            showToast('warning', 'Km Final Requerido', 'Anota el kilometraje final del vehículo');
+            return;
+        }
+        const kmInicial = AppState.currentBitacora.km_inicial;
+        if (parseInt(kmFinal) < kmInicial) {
+            showToast('warning', 'Km Inválido', `El km final (${kmFinal}) no puede ser menor al inicial (${kmInicial})`);
+            return;
+        }
+    }
+
     const btn = DOM.btnModalConfirm();
     btn.disabled = true;
     btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Cerrando...';
@@ -508,10 +663,20 @@ async function handleCloseSession() {
 
         if (error) throw error;
 
+        // Actualizar km final en bitácora si aplica
+        if (AppState.currentUser.usa_vehiculo && AppState.currentBitacora) {
+            const kmFinal = parseInt(DOM.modalKmFinal().value);
+            await supabaseClient
+                .from('bitacora_vehiculos')
+                .update({ km_final: kmFinal })
+                .eq('id', AppState.currentBitacora.id);
+        }
+
         // Limpiar estado
         clearInterval(AppState.timerInterval);
         AppState.currentUser = null;
         AppState.currentSession = null;
+        AppState.currentBitacora = null;
         AppState.closeLocation = null;
 
         closeCloseModal();
@@ -537,11 +702,11 @@ async function loadAdminDashboard() {
     if (!supabaseClient) return;
 
     try {
-        // Cargar estadísticas
         await Promise.all([
             loadStats(),
             loadSesiones(),
-            loadFilterUsuarios()
+            loadFilterUsuarios(),
+            loadBitacora()
         ]);
     } catch (error) {
         console.error('Error cargando dashboard:', error);
@@ -676,7 +841,7 @@ function renderTable(sesiones) {
     if (!sesiones || sesiones.length === 0) {
         tbody.innerHTML = `
             <tr class="empty-row">
-                <td colspan="8">
+                <td colspan="9">
                     <div class="empty-state">
                         <span class="material-icons-round">inbox</span>
                         <p>No hay registros para mostrar</p>
@@ -694,7 +859,6 @@ function renderTable(sesiones) {
         const fechaInicio = new Date(s.fecha_inicio);
         const fechaCierre = s.fecha_cierre ? new Date(s.fecha_cierre) : null;
 
-        // Calcular horas trabajadas
         let horasTrabajadas = '--';
         if (fechaCierre) {
             const diff = (fechaCierre - fechaInicio) / 1000 / 3600;
@@ -703,7 +867,6 @@ function renderTable(sesiones) {
 
         const nombreUsuario = s.usuarios?.nombre || 'Desconocido';
 
-        // Ubicaciones
         const ubicEntrada = s.direccion_inicio
             ? `<span title="${s.direccion_inicio}">${truncate(s.direccion_inicio, 30)}</span>`
             : (s.latitud_inicio ? `${s.latitud_inicio.toFixed(4)}, ${s.longitud_inicio.toFixed(4)}` : '--');
@@ -711,6 +874,11 @@ function renderTable(sesiones) {
         const ubicSalida = s.direccion_cierre
             ? `<span title="${s.direccion_cierre}">${truncate(s.direccion_cierre, 30)}</span>`
             : (s.latitud_cierre ? `${s.latitud_cierre.toFixed(4)}, ${s.longitud_cierre.toFixed(4)}` : '--');
+
+        const dispositivoIcon = s.dispositivo
+            ? (s.dispositivo.includes('iPhone') || s.dispositivo.includes('iPad') ? 'phone_iphone'
+              : s.dispositivo.includes('Android') ? 'smartphone' : 'computer')
+            : 'device_unknown';
 
         return `
             <tr>
@@ -721,6 +889,12 @@ function renderTable(sesiones) {
                 <td>${horasTrabajadas}</td>
                 <td>${ubicEntrada}</td>
                 <td>${ubicSalida}</td>
+                <td>
+                    <span class="device-badge" title="${s.dispositivo || 'Desconocido'}">
+                        <span class="material-icons-round" style="font-size:14px">${dispositivoIcon}</span>
+                        ${truncate(s.dispositivo || 'Desconocido', 18)}
+                    </span>
+                </td>
                 <td>
                     <span class="table-badge ${s.estado === 'abierta' ? 'open' : 'closed'}">
                         ${s.estado === 'abierta' ? '● Activa' : '● Cerrada'}
@@ -733,6 +907,83 @@ function renderTable(sesiones) {
 
 function truncate(str, max) {
     return str.length > max ? str.substring(0, max) + '...' : str;
+}
+
+// ============================================
+// BITÁCORA DE VEHÍCULOS
+// ============================================
+async function loadBitacora() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('bitacora_vehiculos')
+            .select(`
+                id, km_inicial, km_final, notas, created_at,
+                usuarios(nombre),
+                vehiculos(placa, descripcion),
+                sesiones(fecha_inicio, fecha_cierre, estado)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(200);
+        if (error) throw error;
+        AppState.bitacora = data || [];
+        renderBitacoraTable(AppState.bitacora);
+    } catch (err) {
+        console.error('Error cargando bitácora:', err);
+    }
+}
+
+function renderBitacoraTable(registros) {
+    const tbody = DOM.bitacoraBody();
+    const count = DOM.bitacoraCount();
+
+    if (!registros || registros.length === 0) {
+        tbody.innerHTML = `
+            <tr class="empty-row">
+                <td colspan="8">
+                    <div class="empty-state">
+                        <span class="material-icons-round">two_wheeler</span>
+                        <p>No hay registros de vehículos</p>
+                    </div>
+                </td>
+            </tr>`;
+        count.textContent = '0 registros';
+        return;
+    }
+
+    count.textContent = `${registros.length} registro${registros.length !== 1 ? 's' : ''}`;
+
+    tbody.innerHTML = registros.map(r => {
+        const fecha = new Date(r.created_at).toLocaleDateString('es-MX');
+        const mensajero = r.usuarios?.nombre || '--';
+        const placa = r.vehiculos?.placa || '--';
+        const vehiculo = r.vehiculos?.descripcion || '--';
+        const kmRec = r.km_final != null ? r.km_final - r.km_inicial : '--';
+        const estado = r.sesiones?.estado || '--';
+
+        return `
+            <tr>
+                <td><strong>${mensajero}</strong></td>
+                <td>${fecha}</td>
+                <td>${vehiculo}</td>
+                <td><span class="table-badge open">${placa}</span></td>
+                <td>${r.km_inicial.toLocaleString()} km</td>
+                <td>${r.km_final != null ? r.km_final.toLocaleString() + ' km' : '<em style="color:#aaa">En ruta</em>'}</td>
+                <td>${kmRec !== '--' ? kmRec.toLocaleString() + ' km' : '--'}</td>
+                <td><span class="table-badge ${estado === 'abierta' ? 'open' : 'closed'}">${estado === 'abierta' ? '● Activa' : '● Cerrada'}</span></td>
+            </tr>`;
+    }).join('');
+}
+
+// ============================================
+// TABS ADMIN
+// ============================================
+function switchAdminTab(tab) {
+    document.getElementById('panel-asistencia').classList.toggle('hidden', tab !== 'asistencia');
+    document.getElementById('panel-bitacora').classList.toggle('hidden', tab !== 'bitacora');
+    document.getElementById('tab-asistencia').classList.toggle('active', tab === 'asistencia');
+    document.getElementById('tab-bitacora').classList.toggle('active', tab === 'bitacora');
+    if (tab === 'bitacora') loadBitacora();
 }
 
 // ============================================

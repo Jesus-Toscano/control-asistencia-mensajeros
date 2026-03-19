@@ -1312,3 +1312,96 @@ tbody tr:last-child td {
     background: var(--primary);
     color: white;
 }
+
+/* === VEHICLE SECTION (LOGIN) === */
+.vehiculo-section {
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    background: rgba(99, 102, 241, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: fadeInUp 0.3s ease;
+}
+
+.vehiculo-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--primary-light);
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.vehiculo-section-title .material-icons-round {
+    font-size: 18px;
+}
+
+/* === ADMIN TABS === */
+.admin-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    border: 1px solid var(--glass-border);
+    border-bottom: none;
+}
+
+.admin-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    transition: var(--transition-base);
+}
+
+.admin-tab .material-icons-round {
+    font-size: 18px;
+}
+
+.admin-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.admin-tab.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+/* === DEVICE BADGE === */
+.device-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.device-badge .material-icons-round {
+    color: var(--primary-light);
+}
+
+/* === MODAL KM SECTION === */
+#modal-km-section {
+    animation: fadeInUp 0.25s ease;
+}
+

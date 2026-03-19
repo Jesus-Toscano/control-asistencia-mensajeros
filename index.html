@@ -82,6 +82,30 @@
                         <span>Obteniendo ubicación...</span>
                     </div>
                     
+                    <!-- Formulario de Bitácora de Vehículo (solo para usuarios con usa_vehiculo) -->
+                    <div id="vehiculo-section" class="vehiculo-section hidden">
+                        <div class="vehiculo-section-title">
+                            <span class="material-icons-round">two_wheeler</span>
+                            Bitácora de Vehículo
+                        </div>
+                        <div class="form-group">
+                            <label for="select-vehiculo">
+                                <span class="material-icons-round">directions_car</span>
+                                Vehículo Asignado
+                            </label>
+                            <select id="select-vehiculo">
+                                <option value="">Selecciona un vehículo...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="input-km-inicial">
+                                <span class="material-icons-round">speed</span>
+                                Kilometraje Inicial
+                            </label>
+                            <input type="number" id="input-km-inicial" placeholder="Ej. 12500" min="0">
+                        </div>
+                    </div>
+
                     <button type="submit" id="btn-login" class="btn btn-primary btn-block" disabled>
                         <span class="material-icons-round">login</span>
                         Iniciar Sesión
@@ -277,38 +301,91 @@
 
                 <!-- Tabla de Registros -->
                 <div class="table-container">
-                    <div class="table-header-bar">
-                        <h3>
+                    <!-- Tabs -->
+                    <div class="admin-tabs">
+                        <button class="admin-tab active" id="tab-asistencia" onclick="switchAdminTab('asistencia')">
                             <span class="material-icons-round">list_alt</span>
-                            Registros de Asistencia
-                        </h3>
-                        <span class="record-count" id="record-count">0 registros</span>
+                            Asistencia
+                        </button>
+                        <button class="admin-tab" id="tab-bitacora" onclick="switchAdminTab('bitacora')">
+                            <span class="material-icons-round">two_wheeler</span>
+                            Bitácora Vehículos
+                        </button>
                     </div>
-                    <div class="table-scroll">
-                        <table id="tabla-sesiones">
-                            <thead>
-                                <tr>
-                                    <th>Mensajero</th>
-                                    <th>Fecha</th>
-                                    <th>Entrada</th>
-                                    <th>Salida</th>
-                                    <th>Horas</th>
-                                    <th>Ubicación Entrada</th>
-                                    <th>Ubicación Salida</th>
-                                    <th>Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tabla-body">
-                                <tr class="empty-row">
-                                    <td colspan="8">
-                                        <div class="empty-state">
-                                            <span class="material-icons-round">inbox</span>
-                                            <p>No hay registros para mostrar</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+
+                    <!-- Panel: Asistencia -->
+                    <div id="panel-asistencia">
+                        <div class="table-header-bar">
+                            <h3>
+                                <span class="material-icons-round">list_alt</span>
+                                Registros de Asistencia
+                            </h3>
+                            <span class="record-count" id="record-count">0 registros</span>
+                        </div>
+                        <div class="table-scroll">
+                            <table id="tabla-sesiones">
+                                <thead>
+                                    <tr>
+                                        <th>Mensajero</th>
+                                        <th>Fecha</th>
+                                        <th>Entrada</th>
+                                        <th>Salida</th>
+                                        <th>Horas</th>
+                                        <th>Ubicación Entrada</th>
+                                        <th>Ubicación Salida</th>
+                                        <th>Dispositivo</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-body">
+                                    <tr class="empty-row">
+                                        <td colspan="9">
+                                            <div class="empty-state">
+                                                <span class="material-icons-round">inbox</span>
+                                                <p>No hay registros para mostrar</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Panel: Bitácora -->
+                    <div id="panel-bitacora" class="hidden">
+                        <div class="table-header-bar">
+                            <h3>
+                                <span class="material-icons-round">two_wheeler</span>
+                                Bitácora de Uso de Vehículos
+                            </h3>
+                            <span class="record-count" id="bitacora-count">0 registros</span>
+                        </div>
+                        <div class="table-scroll">
+                            <table id="tabla-bitacora">
+                                <thead>
+                                    <tr>
+                                        <th>Mensajero</th>
+                                        <th>Fecha</th>
+                                        <th>Vehículo</th>
+                                        <th>Placa</th>
+                                        <th>Km Inicial</th>
+                                        <th>Km Final</th>
+                                        <th>Km Recorridos</th>
+                                        <th>Estado Sesión</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bitacora-body">
+                                    <tr class="empty-row">
+                                        <td colspan="8">
+                                            <div class="empty-state">
+                                                <span class="material-icons-round">two_wheeler</span>
+                                                <p>No hay registros de vehículos</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -334,6 +411,16 @@
                         Contraseña
                     </label>
                     <input type="password" id="modal-password" placeholder="Ingresa tu contraseña">
+                </div>
+                <!-- Km final: solo visible si el usuario usa vehículo -->
+                <div id="modal-km-section" class="hidden">
+                    <div class="form-group">
+                        <label for="modal-km-final">
+                            <span class="material-icons-round">speed</span>
+                            Kilometraje Final
+                        </label>
+                        <input type="number" id="modal-km-final" placeholder="Ej. 12850" min="0">
+                    </div>
                 </div>
                 <div id="modal-location-status" class="location-status">
                     <span class="material-icons-round spinning">my_location</span>
