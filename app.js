@@ -845,6 +845,7 @@ async function loadSesiones(filters = {}) {
                 direccion_cierre,
                 estado,
                 notas,
+                dispositivo,
                 usuarios!inner(nombre)
             `)
             .order('fecha_inicio', { ascending: false })
@@ -1091,6 +1092,9 @@ function exportToCSV() {
         'Latitud Salida',
         'Longitud Salida',
         'Dirección Salida',
+        'Dispositivo',
+        'IP',
+        'ID Dispositivo',
         'Estado'
     ];
 
@@ -1102,6 +1106,10 @@ function exportToCSV() {
         if (fc) {
             horas = ((fc - fi) / 1000 / 3600).toFixed(2);
         }
+
+        const ipM = s.dispositivo ? s.dispositivo.match(/IP: ([\d.]+)/) : null;
+        const fpM = s.dispositivo ? s.dispositivo.match(/ID:([A-F0-9]+)/) : null;
+        const devLabel = s.dispositivo ? s.dispositivo.split(' | ')[0] : '';
 
         return [
             s.usuarios?.nombre || 'Desconocido',
@@ -1116,6 +1124,9 @@ function exportToCSV() {
             s.latitud_cierre || '',
             s.longitud_cierre || '',
             s.direccion_cierre || '',
+            devLabel,
+            ipM ? ipM[1] : '',
+            fpM ? fpM[1] : '',
             s.estado
         ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
     });
