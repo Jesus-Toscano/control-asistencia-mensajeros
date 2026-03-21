@@ -80,17 +80,29 @@ CREATE POLICY "Permitir actualizar bitacora" ON bitacora_vehiculos FOR UPDATE US
 -- Cambia los nombres y contraseñas según tus mensajeros reales
 INSERT INTO usuarios (nombre, rol, password, usa_vehiculo) VALUES
     ('ADMIN', 'admin', 'admin2024', false),
-    ('JUAN PÉREZ', 'mensajero', '1234', true),
-    ('MARÍA LÓPEZ', 'mensajero', '5678', false),
-    ('CARLOS GARCÍA', 'mensajero', '9012', true),
-    ('ANA MARTÍNEZ', 'mensajero', '3456', false),
-    ('ROBERTO HERNÁNDEZ', 'mensajero', '7890', false);
+    ('LEONEL ALEXANDRO BARRIOS TORRES', 'mensajero', 'LB8201', false),
+    ('FABIAN ALEJANDRO TOLOSA GARCIA', 'mensajero', 'FT9352', false),
+    ('GIL CARRILLO', 'mensajero', 'GC5106', false),
+    ('ISMAEL ROMERO FERNÁNDEZ', 'mensajero', 'IR2749', false),
+    ('CRISTIAN ALBERTO HUERTA CHÁVEZ', 'mensajero', 'CH6830', false),
+    ('JUAN ANTONIO ALONSO MUÑIZ', 'mensajero', 'JA4152', false),
+    ('ADRIAN ESQUIVEL', 'mensajero', 'AE8063', false);
 
--- 8. Vehículos de ejemplo
+-- 8. Vehículos
 INSERT INTO vehiculos (placa, descripcion) VALUES
-    ('ABC-123', 'Moto Honda CB125'),
-    ('XYZ-456', 'Moto Italika'),
-    ('MNO-789', 'Motocicleta Yamaha');
+    ('28NUJ3', 'HONDA'),
+    ('38PDK8', 'HONDA'),
+    ('39PDK8', 'HONDA'),
+    ('37PDK8', 'HONDA'),
+    ('85NYP7', 'HONDA'),
+    ('K5K93B', 'HONDA'),
+    ('K4V90X', 'HONDA'),
+    ('JU61452', 'NISSAN NP 300'),
+    ('JX17744', 'NISSAN NP300'),
+    ('JV47607', 'NISSAN NP300'),
+    ('JW50550', 'FRONTIER PLATA DOBLE CABINA'),
+    ('PDX8591', 'CHEVROLET TRAX');
+
 
 -- 9. Vista para reportes de asistencia
 CREATE OR REPLACE VIEW reporte_asistencia AS
