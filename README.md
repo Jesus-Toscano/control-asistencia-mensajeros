@@ -64,16 +64,18 @@ Simplemente abre `index.html` en un navegador web.
 
 > **Nota:** Para que la geolocalización funcione, se recomienda usar HTTPS o localhost.
 
-## 👥 Usuarios de Ejemplo
+## 👥 Lista de Usuarios
 
 | Nombre              | Rol       | Contraseña |
 |---------------------|-----------|------------|
 | ADMIN               | admin     | admin2024  |
-| JUAN PÉREZ          | mensajero | 1234       |
-| MARÍA LÓPEZ         | mensajero | 5678       |
-| CARLOS GARCÍA       | mensajero | 9012       |
-| ANA MARTÍNEZ        | mensajero | 3456       |
-| ROBERTO HERNÁNDEZ   | mensajero | 7890       |
+| LEONEL ALEXANDRO BARRIOS TORRES| mensajero | LB8201     |
+| FABIAN ALEJANDRO TOLOSA GARCIA | mensajero | FT9352     |
+| GIL CARRILLO        | mensajero | GC5106     |
+| ISMAEL ROMERO FERNÁNDEZ | mensajero | IR2749     |
+| CRISTIAN ALBERTO HUERTA CHÁVEZ | mensajero | CH6830     |
+| JUAN ANTONIO ALONSO MUÑIZ | mensajero | JA4152     |
+| ADRIAN ESQUIVEL     | mensajero | AE8063     |
 
 ## 📱 Vistas de la Aplicación
 
