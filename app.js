@@ -438,27 +438,12 @@ async function loadVehiculos() {
     }
 }
 
-// REQ 7/8 — Control dinámico de km según vehículo seleccionado
+// REQ 8 — Control dinámico de km según vehículo seleccionado (solo login)
 function onVehiculoSelectChange() {
     const select = DOM.selectVehiculo();
     const kmInput = DOM.inputKmInicial();
     const esSinAsignar = select.value === 'sin_asignar';
-
-    // Candado km inicial
     applyKmLock(kmInput, esSinAsignar);
-
-    // Botón condicional "+Agregar Vehículo"
-    let btnAgregar = document.getElementById('btn-agregar-vehiculo');
-    if (!btnAgregar) {
-        btnAgregar = document.createElement('button');
-        btnAgregar.type = 'button';
-        btnAgregar.id = 'btn-agregar-vehiculo';
-        btnAgregar.className = 'btn btn-outline btn-sm btn-add-vehiculo';
-        btnAgregar.innerHTML = '<span class="material-icons-round">add_circle_outline</span> Agregar Vehículo';
-        btnAgregar.addEventListener('click', openNuevoVehiculoModal);
-        select.closest('.form-group').after(btnAgregar);
-    }
-    btnAgregar.classList.toggle('hidden', !esSinAsignar);
 }
 
 // REQ 8 — Aplica/quita el candado de validación del km
@@ -478,14 +463,13 @@ function applyKmLock(kmInput, deshabilitar) {
 }
 
 // ============================================
-// MODAL: NUEVO VEHÍCULO (+ Agregar Vehículo)
+// MODAL: AGREGAR VEHÍCULO (solo Admin panel)
 // ============================================
-function openNuevoVehiculoModal() {
-    // Crear modal si no existe
-    let overlay = document.getElementById('modal-nuevo-vehiculo');
+function openAdminNuevoVehiculoModal() {
+    let overlay = document.getElementById('modal-admin-vehiculo');
     if (!overlay) {
         overlay = document.createElement('div');
-        overlay.id = 'modal-nuevo-vehiculo';
+        overlay.id = 'modal-admin-vehiculo';
         overlay.className = 'modal-overlay';
         overlay.innerHTML = `
             <div class="modal">
@@ -494,93 +478,154 @@ function openNuevoVehiculoModal() {
                         <span class="material-icons-round">two_wheeler</span>
                     </div>
                     <h3>Registrar Vehículo</h3>
-                    <p>Ingresa los datos del vehículo que usarás hoy</p>
+                    <p>Solo los administradores pueden agregar vehículos al catálogo</p>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
                         <label><span class="material-icons-round">pin</span> Placa</label>
-                        <input type="text" id="nv-placa" placeholder="Ej. ABC-1234" style="text-transform:uppercase">
+                        <input type="text" id="adm-nv-placa" placeholder="Ej. ABC-1234" style="text-transform:uppercase">
                     </div>
                     <div class="form-group">
                         <label><span class="material-icons-round">directions_car</span> Descripción (Marca / Modelo)</label>
-                        <input type="text" id="nv-descripcion" placeholder="Ej. Honda PCX 2022">
-                    </div>
-                    <div class="form-group">
-                        <label><span class="material-icons-round">speed</span> Kilometraje Inicial</label>
-                        <input type="number" id="nv-km" placeholder="Ej. 12500" min="0">
+                        <input type="text" id="adm-nv-descripcion" placeholder="Ej. Honda PCX 2022">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button id="btn-nv-cancel" class="btn btn-ghost">Cancelar</button>
-                    <button id="btn-nv-save" class="btn btn-primary">
+                    <button id="btn-adm-nv-cancel" class="btn btn-ghost">Cancelar</button>
+                    <button id="btn-adm-nv-save" class="btn btn-primary">
                         <span class="material-icons-round">save</span> Guardar Vehículo
                     </button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
-        document.getElementById('btn-nv-cancel').addEventListener('click', closeNuevoVehiculoModal);
-        document.getElementById('btn-nv-save').addEventListener('click', handleSaveNuevoVehiculo);
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeNuevoVehiculoModal(); });
+        document.getElementById('btn-adm-nv-cancel').addEventListener('click', () => overlay.classList.remove('visible'));
+        document.getElementById('btn-adm-nv-save').addEventListener('click', handleAdminSaveNuevoVehiculo);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('visible'); });
     }
-    // Limpiar campos
-    document.getElementById('nv-placa').value = '';
-    document.getElementById('nv-descripcion').value = '';
-    document.getElementById('nv-km').value = '';
+    document.getElementById('adm-nv-placa').value = '';
+    document.getElementById('adm-nv-descripcion').value = '';
     overlay.classList.add('visible');
-    document.getElementById('nv-placa').focus();
+    document.getElementById('adm-nv-placa').focus();
 }
 
-function closeNuevoVehiculoModal() {
-    const overlay = document.getElementById('modal-nuevo-vehiculo');
-    if (overlay) overlay.classList.remove('visible');
-}
-
-async function handleSaveNuevoVehiculo() {
-    const placa = document.getElementById('nv-placa').value.trim().toUpperCase();
-    const descripcion = document.getElementById('nv-descripcion').value.trim();
-    const km = document.getElementById('nv-km').value;
-
+async function handleAdminSaveNuevoVehiculo() {
+    const placa = document.getElementById('adm-nv-placa').value.trim().toUpperCase();
+    const descripcion = document.getElementById('adm-nv-descripcion').value.trim();
     if (!placa) { showToast('warning', 'Placa Requerida', 'Escribe la placa del vehículo'); return; }
-    if (!km || isNaN(km)) { showToast('warning', 'Km Requerido', 'Ingresa el kilometraje inicial'); return; }
 
-    const btn = document.getElementById('btn-nv-save');
+    const btn = document.getElementById('btn-adm-nv-save');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Guardando...';
+    try {
+        const { error } = await supabaseClient
+            .from('vehiculos')
+            .insert({ placa, descripcion, activo: true });
+        if (error) throw error;
+        document.getElementById('modal-admin-vehiculo').classList.remove('visible');
+        showToast('success', 'Vehículo Registrado', `${placa} añadido al catálogo`);
+    } catch (err) {
+        console.error('Error al guardar vehículo:', err);
+        showToast('error', 'Error', 'No se pudo guardar el vehículo');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">save</span> Guardar Vehículo';
+}
+
+// ============================================
+// MODAL: ASIGNAR VEHÍCULO MID-SESSION
+// ============================================
+function openAsignarVehiculoModal() {
+    let overlay = document.getElementById('modal-asignar-vehiculo');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modal-asignar-vehiculo';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-icon" style="background:linear-gradient(135deg,#10b981,#059669)">
+                        <span class="material-icons-round">two_wheeler</span>
+                    </div>
+                    <h3>Asignar Vehículo</h3>
+                    <p>Selecciona el vehículo y registra el kilometraje inicial</p>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label><span class="material-icons-round">directions_car</span> Vehículo</label>
+                        <select id="asignar-select-vehiculo"><option value="">Cargando...</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label><span class="material-icons-round">speed</span> Kilometraje Inicial</label>
+                        <input type="number" id="asignar-km-inicial" placeholder="Ej. 12500" min="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-asignar-cancel" class="btn btn-ghost">Cancelar</button>
+                    <button id="btn-asignar-save" class="btn btn-primary">
+                        <span class="material-icons-round">check_circle</span> Confirmar Asignación
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('btn-asignar-cancel').addEventListener('click', () => overlay.classList.remove('visible'));
+        document.getElementById('btn-asignar-save').addEventListener('click', handleSaveAsignacionVehiculo);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('visible'); });
+    }
+
+    // Cargar vehículos disponibles
+    const sel = document.getElementById('asignar-select-vehiculo');
+    sel.innerHTML = '<option value="">Selecciona un vehículo...</option>';
+    (AppState.vehiculos.length ? Promise.resolve(AppState.vehiculos) :
+        supabaseClient.from('vehiculos').select('id,placa,descripcion').eq('activo',true).order('placa')
+            .then(r => { AppState.vehiculos = r.data || []; return AppState.vehiculos; })
+    ).then(vehiculos => {
+        vehiculos.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = `${v.placa}${v.descripcion ? ' — ' + v.descripcion : ''}`;
+            sel.appendChild(opt);
+        });
+    });
+
+    document.getElementById('asignar-km-inicial').value = '';
+    overlay.classList.add('visible');
+}
+
+async function handleSaveAsignacionVehiculo() {
+    const vehiculoId = document.getElementById('asignar-select-vehiculo').value;
+    const km = document.getElementById('asignar-km-inicial').value;
+
+    if (!vehiculoId) { showToast('warning', 'Vehículo Requerido', 'Selecciona un vehículo'); return; }
+    if (!km || isNaN(km) || parseInt(km) < 0) { showToast('warning', 'Km Requerido', 'Ingresa el kilometraje inicial'); return; }
+
+    const btn = document.getElementById('btn-asignar-save');
     btn.disabled = true;
     btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Guardando...';
 
     try {
-        const { data: nuevo, error } = await supabaseClient
-            .from('vehiculos')
-            .insert({ placa, descripcion, activo: true })
-            .select('id, placa, descripcion')
+        const { data: bv, error } = await supabaseClient
+            .from('bitacora_vehiculos')
+            .insert({
+                sesion_id: AppState.currentSession.id,
+                usuario_id: AppState.currentUser.id,
+                vehiculo_id: vehiculoId,
+                km_inicial: parseInt(km)
+            })
+            .select()
             .single();
         if (error) throw error;
 
-        AppState.nuevoVehiculoId = nuevo.id;
-        // Inyectar en el select y seleccionarlo
-        const select = DOM.selectVehiculo();
-        const opt = document.createElement('option');
-        opt.value = nuevo.id;
-        opt.textContent = `${nuevo.placa}${nuevo.descripcion ? ' — ' + nuevo.descripcion : ''}`;
-        select.appendChild(opt);
-        select.value = nuevo.id;
-
-        // Pre-llenar km inicial y activar candados
-        const kmInput = DOM.inputKmInicial();
-        kmInput.value = km;
-        applyKmLock(kmInput, false);
-
-        // Ocultar botón agregar
-        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
-        if (btnAgregar) btnAgregar.classList.add('hidden');
-
-        closeNuevoVehiculoModal();
-        showToast('success', 'Vehículo Registrado', `${placa} agregado y seleccionado`);
+        AppState.currentBitacora = bv;
+        document.getElementById('modal-asignar-vehiculo').classList.remove('visible');
+        // Ocultar el botón mid-session
+        document.getElementById('btn-asignar-vehiculo-wrapper').classList.add('hidden');
+        showToast('success', 'Vehículo Asignado', 'El vehículo quedó registrado en tu sesión');
     } catch (err) {
-        console.error('Error guardando vehículo:', err);
-        showToast('error', 'Error', 'No se pudo registrar el vehículo. Intenta de nuevo.');
+        console.error('Error asignando vehículo:', err);
+        showToast('error', 'Error', 'No se pudo asignar el vehículo');
     }
     btn.disabled = false;
-    btn.innerHTML = '<span class="material-icons-round">save</span> Guardar Vehículo';
+    btn.innerHTML = '<span class="material-icons-round">check_circle</span> Confirmar Asignación';
 }
 
 // ============================================
@@ -781,6 +826,19 @@ function showActiveSession(session) {
     // Coordenadas
     if (session.latitud_inicio && session.longitud_inicio) {
         DOM.sessionCoords().textContent = `${session.latitud_inicio.toFixed(6)}, ${session.longitud_inicio.toFixed(6)}`;
+    }
+
+    // Botón MID-SESSION: mostrar si usa vehículo pero no tiene bitácora asignada
+    const wrapper = document.getElementById('btn-asignar-vehiculo-wrapper');
+    const btnAsignar = document.getElementById('btn-asignar-vehiculo');
+    if (user.usa_vehiculo && !AppState.currentBitacora) {
+        wrapper.classList.remove('hidden');
+        if (!btnAsignar._listenerAdded) {
+            btnAsignar.addEventListener('click', openAsignarVehiculoModal);
+            btnAsignar._listenerAdded = true;
+        }
+    } else {
+        wrapper.classList.add('hidden');
     }
 
     // Iniciar timer

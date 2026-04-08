@@ -188,6 +188,20 @@
                     </div>
                 </div>
 
+                <!-- Botón asignar vehículo mid-session (solo visible si no tiene bitaácora) -->
+                <div id="btn-asignar-vehiculo-wrapper" class="hidden">
+                    <button id="btn-asignar-vehiculo" class="btn-asignar-vehiculo">
+                        <div class="btn-asignar-vehiculo-icon">
+                            <span class="material-icons-round">two_wheeler</span>
+                        </div>
+                        <div class="btn-asignar-vehiculo-text">
+                            <span class="btn-asignar-vehiculo-title">Sin vehículo asignado</span>
+                            <span class="btn-asignar-vehiculo-sub">Toca para asignar un vehículo a esta sesión</span>
+                        </div>
+                        <span class="material-icons-round btn-asignar-vehiculo-arrow">arrow_forward_ios</span>
+                    </button>
+                </div>
+
                 <!-- Botón cerrar sesión -->
                 <button id="btn-cerrar-sesion" class="btn btn-danger btn-block">
                     <span class="material-icons-round">logout</span>
@@ -405,7 +419,13 @@
                                 <span class="material-icons-round">group</span>
                                 Gestión de Usuarios
                             </h3>
-                            <span class="record-count" id="usuarios-count">0 usuarios</span>
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <span class="record-count" id="usuarios-count">0 usuarios</span>
+                                <button id="btn-admin-add-vehiculo" class="btn btn-primary btn-sm" onclick="openAdminNuevoVehiculoModal()">
+                                    <span class="material-icons-round">add</span>
+                                    Agregar Vehículo
+                                </button>
+                            </div>
                         </div>
                         <div id="usuarios-grid" class="usuarios-grid">
                             <!-- Cards se generan desde JS -->

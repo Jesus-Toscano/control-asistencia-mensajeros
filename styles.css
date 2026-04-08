@@ -1646,3 +1646,92 @@ tbody tr:last-child td {
 .btn-add-vehiculo .material-icons-round {
     font-size: 18px;
 }
+
+/* === BOTÓN MID-SESSION ASIGNAR VEHÍCULO === */
+.btn-asignar-vehiculo-wrapper {
+    margin-bottom: 12px;
+}
+
+.btn-asignar-vehiculo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(5,150,105,0.05));
+    border: 1px solid rgba(16,185,129,0.35);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: var(--transition-base);
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.3s ease;
+}
+
+.btn-asignar-vehiculo::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(16,185,129,0.08), transparent);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.btn-asignar-vehiculo:hover::before { opacity: 1; }
+
+.btn-asignar-vehiculo:hover {
+    border-color: #10b981;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(16,185,129,0.2);
+}
+
+.btn-asignar-vehiculo-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(16,185,129,0.35);
+}
+
+.btn-asignar-vehiculo-icon .material-icons-round {
+    color: white;
+    font-size: 22px;
+}
+
+.btn-asignar-vehiculo-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.btn-asignar-vehiculo-title {
+    font-family: var(--font-family);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #10b981;
+    letter-spacing: 0.01em;
+}
+
+.btn-asignar-vehiculo-sub {
+    font-family: var(--font-family);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.btn-asignar-vehiculo-arrow {
+    color: #10b981;
+    font-size: 16px !important;
+    opacity: 0.6;
+    transition: transform 0.2s ease;
+}
+
+.btn-asignar-vehiculo:hover .btn-asignar-vehiculo-arrow {
+    transform: translateX(3px);
+    opacity: 1;
+}
