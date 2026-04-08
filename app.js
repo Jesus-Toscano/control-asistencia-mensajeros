@@ -379,7 +379,12 @@ async function onUserSelectChange() {
     if (!selected || !selected.value) {
         section.classList.add('hidden');
         DOM.selectVehiculo().removeAttribute('required');
-        DOM.inputKmInicial().removeAttribute('required');
+        const kmInput = DOM.inputKmInicial();
+        kmInput.removeAttribute('required');
+        kmInput.removeAttribute('disabled');
+        // Ocultar botón agregar si existe
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
         return;
     }
 
@@ -388,14 +393,19 @@ async function onUserSelectChange() {
     if (usaVehiculo) {
         section.classList.remove('hidden');
         DOM.selectVehiculo().setAttribute('required', 'required');
-        DOM.inputKmInicial().setAttribute('required', 'required');
+        // NO poner required en km aún — se decide después de cargar el select de vehículos
         await loadVehiculos();
+        // Aplicar candado según la opción que quedó seleccionada (sin_asignar por defecto)
+        onVehiculoSelectChange();
     } else {
         section.classList.add('hidden');
         DOM.selectVehiculo().removeAttribute('required');
         DOM.inputKmInicial().removeAttribute('required');
+        DOM.inputKmInicial().removeAttribute('disabled');
         DOM.inputKmInicial().value = '';
         DOM.selectVehiculo().value = '';
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
     }
 }
 
