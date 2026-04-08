@@ -1624,3 +1624,25 @@ tbody tr:last-child td {
     color: var(--text-muted);
     padding-left: 8px;
 }
+
+/* === BOTÓN AGREGAR VEHÍCULO === */
+.btn-add-vehiculo {
+    width: 100%;
+    margin-top: 8px;
+    border-style: dashed;
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.05);
+    animation: fadeIn 0.25s ease;
+    transition: var(--transition-base);
+}
+
+.btn-add-vehiculo:hover {
+    background: rgba(99, 102, 241, 0.12);
+    border-color: var(--primary-light);
+    transform: none;
+}
+
+.btn-add-vehiculo .material-icons-round {
+    font-size: 18px;
+}

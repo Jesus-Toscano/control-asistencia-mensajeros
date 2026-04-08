@@ -51,13 +51,20 @@ const AppState = {
     sesiones: [],
     vehiculos: [],
     bitacora: [],
-    // Paginación
+    // Paginación — Asistencia
     currentPage: 1,
     pageSize: 30,
     totalRecords: 0,
     currentFilters: {},
-    // Lazy loading: qué tabs ya fueron cargadas
+    // Paginación — Bitácora (propia)
+    bitacoraPage: 1,
+    bitacoraPageSize: 25,
+    bitacoraTotal: 0,
+    // Lazy loading: tabs destruidas al cambiar
+    activeTab: 'asistencia',
     tabsLoaded: {},
+    // Nuevo vehículo temporal (modal)
+    nuevoVehiculoId: null,
 };
 
 // ============================================
@@ -421,20 +428,149 @@ async function loadVehiculos() {
     }
 }
 
-// REQ 5 — Ocultar km inicial si el vehículo es "Sin asignar aún"
+// REQ 7/8 — Control dinámico de km según vehículo seleccionado
 function onVehiculoSelectChange() {
     const select = DOM.selectVehiculo();
     const kmInput = DOM.inputKmInicial();
-    if (select.value === 'sin_asignar') {
+    const esSinAsignar = select.value === 'sin_asignar';
+
+    // Candado km inicial
+    applyKmLock(kmInput, esSinAsignar);
+
+    // Botón condicional "+Agregar Vehículo"
+    let btnAgregar = document.getElementById('btn-agregar-vehiculo');
+    if (!btnAgregar) {
+        btnAgregar = document.createElement('button');
+        btnAgregar.type = 'button';
+        btnAgregar.id = 'btn-agregar-vehiculo';
+        btnAgregar.className = 'btn btn-outline btn-sm btn-add-vehiculo';
+        btnAgregar.innerHTML = '<span class="material-icons-round">add_circle_outline</span> Agregar Vehículo';
+        btnAgregar.addEventListener('click', openNuevoVehiculoModal);
+        select.closest('.form-group').after(btnAgregar);
+    }
+    btnAgregar.classList.toggle('hidden', !esSinAsignar);
+}
+
+// REQ 8 — Aplica/quita el candado de validación del km
+function applyKmLock(kmInput, deshabilitar) {
+    if (deshabilitar) {
         kmInput.removeAttribute('required');
         kmInput.value = '';
+        kmInput.setAttribute('disabled', 'disabled');
         kmInput.closest('.form-group').style.opacity = '0.4';
         kmInput.closest('.form-group').style.pointerEvents = 'none';
     } else {
+        kmInput.removeAttribute('disabled');
         kmInput.setAttribute('required', 'required');
         kmInput.closest('.form-group').style.opacity = '';
         kmInput.closest('.form-group').style.pointerEvents = '';
     }
+}
+
+// ============================================
+// MODAL: NUEVO VEHÍCULO (+ Agregar Vehículo)
+// ============================================
+function openNuevoVehiculoModal() {
+    // Crear modal si no existe
+    let overlay = document.getElementById('modal-nuevo-vehiculo');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modal-nuevo-vehiculo';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-icon" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">
+                        <span class="material-icons-round">two_wheeler</span>
+                    </div>
+                    <h3>Registrar Vehículo</h3>
+                    <p>Ingresa los datos del vehículo que usarás hoy</p>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label><span class="material-icons-round">pin</span> Placa</label>
+                        <input type="text" id="nv-placa" placeholder="Ej. ABC-1234" style="text-transform:uppercase">
+                    </div>
+                    <div class="form-group">
+                        <label><span class="material-icons-round">directions_car</span> Descripción (Marca / Modelo)</label>
+                        <input type="text" id="nv-descripcion" placeholder="Ej. Honda PCX 2022">
+                    </div>
+                    <div class="form-group">
+                        <label><span class="material-icons-round">speed</span> Kilometraje Inicial</label>
+                        <input type="number" id="nv-km" placeholder="Ej. 12500" min="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-nv-cancel" class="btn btn-ghost">Cancelar</button>
+                    <button id="btn-nv-save" class="btn btn-primary">
+                        <span class="material-icons-round">save</span> Guardar Vehículo
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('btn-nv-cancel').addEventListener('click', closeNuevoVehiculoModal);
+        document.getElementById('btn-nv-save').addEventListener('click', handleSaveNuevoVehiculo);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeNuevoVehiculoModal(); });
+    }
+    // Limpiar campos
+    document.getElementById('nv-placa').value = '';
+    document.getElementById('nv-descripcion').value = '';
+    document.getElementById('nv-km').value = '';
+    overlay.classList.add('visible');
+    document.getElementById('nv-placa').focus();
+}
+
+function closeNuevoVehiculoModal() {
+    const overlay = document.getElementById('modal-nuevo-vehiculo');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+async function handleSaveNuevoVehiculo() {
+    const placa = document.getElementById('nv-placa').value.trim().toUpperCase();
+    const descripcion = document.getElementById('nv-descripcion').value.trim();
+    const km = document.getElementById('nv-km').value;
+
+    if (!placa) { showToast('warning', 'Placa Requerida', 'Escribe la placa del vehículo'); return; }
+    if (!km || isNaN(km)) { showToast('warning', 'Km Requerido', 'Ingresa el kilometraje inicial'); return; }
+
+    const btn = document.getElementById('btn-nv-save');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Guardando...';
+
+    try {
+        const { data: nuevo, error } = await supabaseClient
+            .from('vehiculos')
+            .insert({ placa, descripcion, activo: true })
+            .select('id, placa, descripcion')
+            .single();
+        if (error) throw error;
+
+        AppState.nuevoVehiculoId = nuevo.id;
+        // Inyectar en el select y seleccionarlo
+        const select = DOM.selectVehiculo();
+        const opt = document.createElement('option');
+        opt.value = nuevo.id;
+        opt.textContent = `${nuevo.placa}${nuevo.descripcion ? ' — ' + nuevo.descripcion : ''}`;
+        select.appendChild(opt);
+        select.value = nuevo.id;
+
+        // Pre-llenar km inicial y activar candados
+        const kmInput = DOM.inputKmInicial();
+        kmInput.value = km;
+        applyKmLock(kmInput, false);
+
+        // Ocultar botón agregar
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
+
+        closeNuevoVehiculoModal();
+        showToast('success', 'Vehículo Registrado', `${placa} agregado y seleccionado`);
+    } catch (err) {
+        console.error('Error guardando vehículo:', err);
+        showToast('error', 'Error', 'No se pudo registrar el vehículo. Intenta de nuevo.');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">save</span> Guardar Vehículo';
 }
 
 // ============================================
@@ -994,15 +1130,18 @@ function goToPage(page) {
     document.getElementById('panel-asistencia').scrollIntoView({ behavior: 'smooth' });
 }
 
-// REQ 3 — Lazy loading de tabs
+// Carga de tabs (siempre frescas tras switchAdminTab)
 async function loadTabAsistencia() {
     AppState.currentPage = 1;
+    showTableLoader('tabla-body', 9, 'Cargando asistencia...');
     await loadSesiones({});
     AppState.tabsLoaded.asistencia = true;
 }
 
 async function loadTabBitacora() {
-    await loadBitacora();
+    // REQ 2 — Bitácora siempre arranca en página 1 con ventana de 3 días
+    AppState.bitacoraPage = 1;
+    await loadBitacora(1);
     AppState.tabsLoaded.bitacora = true;
 }
 
@@ -1105,25 +1244,98 @@ function truncate(str, max) {
 // ============================================
 // BITÁCORA DE VEHÍCULOS
 // ============================================
-async function loadBitacora() {
+// REQ 2 — Bitácora con ventana de 3 días por defecto + paginación propia
+async function loadBitacora(page = 1) {
     if (!supabaseClient) return;
+
+    AppState.bitacoraPage = page;
+
+    // Calcular rango: últimos 3 días por defecto
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 2); // hoy + 2 días atrás = 3 días
+    startDate.setHours(0, 0, 0, 0);
+
+    const size = AppState.bitacoraPageSize;
+    const rangeFrom = (page - 1) * size;
+    const rangeTo = rangeFrom + size - 1;
+
+    showBitacoraLoader(true);
     try {
-        const { data, error } = await supabaseClient
+        const { data, error, count } = await supabaseClient
             .from('bitacora_vehiculos')
             .select(`
                 id, km_inicial, km_final, notas, created_at,
                 usuarios(nombre),
                 vehiculos(placa, descripcion),
                 sesiones(fecha_inicio, fecha_cierre, estado)
-            `)
+            `, { count: 'exact' })
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString())
             .order('created_at', { ascending: false })
-            .limit(200);
+            .range(rangeFrom, rangeTo);
+
         if (error) throw error;
         AppState.bitacora = data || [];
+        AppState.bitacoraTotal = count || 0;
         renderBitacoraTable(AppState.bitacora);
+        renderBitacoraPagination();
     } catch (err) {
         console.error('Error cargando bitácora:', err);
+        showToast('error', 'Error', 'No se pudo cargar la bitácora');
+    } finally {
+        showBitacoraLoader(false);
     }
+}
+
+function showBitacoraLoader(show) {
+    let loader = document.getElementById('bitacora-loader');
+    if (!loader) {
+        loader = document.createElement('tr');
+        loader.id = 'bitacora-loader';
+        loader.innerHTML = `<td colspan="8"><div class="empty-state"><span class="material-icons-round spinning">sync</span><p>Cargando bitácora...</p></div></td>`;
+    }
+    const tbody = DOM.bitacoraBody();
+    if (show) {
+        tbody.innerHTML = '';
+        tbody.appendChild(loader);
+        DOM.bitacoraCount().textContent = 'Cargando...';
+    }
+}
+
+function renderBitacoraPagination() {
+    const totalPages = Math.ceil(AppState.bitacoraTotal / AppState.bitacoraPageSize);
+    let container = document.getElementById('bitacora-pagination');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'bitacora-pagination';
+        container.className = 'pagination-container';
+        document.getElementById('panel-bitacora').appendChild(container);
+    }
+
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const page = AppState.bitacoraPage;
+    const startP = Math.max(1, page - 2);
+    const endP = Math.min(totalPages, startP + 4);
+
+    let html = `<div class="pagination">`;
+    html += `<button class="pagination-btn" onclick="goToBitacoraPage(${page-1})" ${page===1?'disabled':''}><span class="material-icons-round">chevron_left</span> Anterior</button>`;
+    for (let p = startP; p <= endP; p++) {
+        html += `<button class="pagination-num ${p===page?'active':''}" onclick="goToBitacoraPage(${p})">${p}</button>`;
+    }
+    html += `<button class="pagination-btn" onclick="goToBitacoraPage(${page+1})" ${page===totalPages?'disabled':''}> Siguiente <span class="material-icons-round">chevron_right</span></button>`;
+    html += `<span class="pagination-info">${AppState.bitacoraTotal} registros (últimos 3 días) · Pág ${page}/${totalPages}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goToBitacoraPage(page) {
+    const totalPages = Math.ceil(AppState.bitacoraTotal / AppState.bitacoraPageSize);
+    if (page < 1 || page > totalPages) return;
+    loadBitacora(page);
+    document.getElementById('panel-bitacora').scrollIntoView({ behavior: 'smooth' });
 }
 
 function renderBitacoraTable(registros) {
@@ -1171,20 +1383,71 @@ function renderBitacoraTable(registros) {
 // ============================================
 // TABS ADMIN
 // ============================================
-// REQ 3 — Lazy loading: solo cargar datos al hacer clic en la pestaña
+// REQ 1 — Aislamiento estricto: destruir datos de la tab anterior + loader + fetch solo de la nueva
 function switchAdminTab(tab) {
+    if (AppState.activeTab === tab) return; // ya estamos en esa tab
+
+    // 1. Ocultar/mostrar paneles y activar botón de tab
     ['asistencia', 'bitacora', 'usuarios'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', tab !== t);
         document.getElementById(`tab-${t}`).classList.toggle('active', tab === t);
     });
-    // Cargar solo si aún no se han cargado los datos de esa tab
-    if (tab === 'asistencia' && !AppState.tabsLoaded.asistencia) {
+
+    // 2. Destruir datos de la tab que se abandona
+    destroyTabData(AppState.activeTab);
+
+    // 3. Marcar tab activa y marcar como NO cargada para forzar nuevo fetch
+    AppState.activeTab = tab;
+    AppState.tabsLoaded[tab] = false;
+
+    // 4. Cargar datos de la nueva tab
+    if (tab === 'asistencia') {
+        showTableLoader('tabla-body', 9, 'Cargando asistencia...');
         loadTabAsistencia();
-    } else if (tab === 'bitacora' && !AppState.tabsLoaded.bitacora) {
+    } else if (tab === 'bitacora') {
+        showBitacoraLoader(true);
         loadTabBitacora();
-    } else if (tab === 'usuarios' && !AppState.tabsLoaded.usuarios) {
+    } else if (tab === 'usuarios') {
+        showUsuariosLoader();
         loadTabUsuarios();
     }
+}
+
+// Destruye los datos visuales de una tab cuando se abandona
+function destroyTabData(tab) {
+    if (tab === 'asistencia') {
+        const tbody = DOM.tablaBody();
+        if (tbody) tbody.innerHTML = '';
+        const pg = document.getElementById('pagination-container');
+        if (pg) pg.innerHTML = '';
+        DOM.recordCount().textContent = '0 registros';
+        AppState.sesiones = [];
+    } else if (tab === 'bitacora') {
+        const tbody = DOM.bitacoraBody();
+        if (tbody) tbody.innerHTML = '';
+        const pg = document.getElementById('bitacora-pagination');
+        if (pg) pg.innerHTML = '';
+        DOM.bitacoraCount().textContent = '0 registros';
+        AppState.bitacora = [];
+    } else if (tab === 'usuarios') {
+        const grid = document.getElementById('usuarios-grid');
+        if (grid) grid.innerHTML = '';
+        const cnt = document.getElementById('usuarios-count');
+        if (cnt) cnt.textContent = '0 usuarios';
+    }
+}
+
+// Loader de fila para tablas
+function showTableLoader(tbodyId, colspan, msg = 'Cargando...') {
+    const tbody = document.getElementById(tbodyId);
+    if (tbody) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}"><div class="empty-state"><span class="material-icons-round spinning">sync</span><p>${msg}</p></div></td></tr>`;
+    }
+}
+
+function showUsuariosLoader() {
+    const grid = document.getElementById('usuarios-grid');
+    if (grid) grid.innerHTML = `<div class="empty-state"><span class="material-icons-round spinning">sync</span><p>Cargando usuarios...</p></div>`;
 }
 
 // ============================================
