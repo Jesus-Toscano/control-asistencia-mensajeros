@@ -51,6 +51,20 @@ const AppState = {
     sesiones: [],
     vehiculos: [],
     bitacora: [],
+    // Paginación — Asistencia
+    currentPage: 1,
+    pageSize: 30,
+    totalRecords: 0,
+    currentFilters: {},
+    // Paginación — Bitácora (propia)
+    bitacoraPage: 1,
+    bitacoraPageSize: 25,
+    bitacoraTotal: 0,
+    // Lazy loading: tabs destruidas al cambiar
+    activeTab: 'asistencia',
+    tabsLoaded: {},
+    // Nuevo vehículo temporal (modal)
+    nuevoVehiculoId: null,
 };
 
 // ============================================
@@ -365,7 +379,12 @@ async function onUserSelectChange() {
     if (!selected || !selected.value) {
         section.classList.add('hidden');
         DOM.selectVehiculo().removeAttribute('required');
-        DOM.inputKmInicial().removeAttribute('required');
+        const kmInput = DOM.inputKmInicial();
+        kmInput.removeAttribute('required');
+        kmInput.removeAttribute('disabled');
+        // Ocultar botón agregar si existe
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
         return;
     }
 
@@ -374,14 +393,19 @@ async function onUserSelectChange() {
     if (usaVehiculo) {
         section.classList.remove('hidden');
         DOM.selectVehiculo().setAttribute('required', 'required');
-        DOM.inputKmInicial().setAttribute('required', 'required');
+        // NO poner required en km aún — se decide después de cargar el select de vehículos
         await loadVehiculos();
+        // Aplicar candado según la opción que quedó seleccionada (sin_asignar por defecto)
+        onVehiculoSelectChange();
     } else {
         section.classList.add('hidden');
         DOM.selectVehiculo().removeAttribute('required');
         DOM.inputKmInicial().removeAttribute('required');
+        DOM.inputKmInicial().removeAttribute('disabled');
         DOM.inputKmInicial().value = '';
         DOM.selectVehiculo().value = '';
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
     }
 }
 
@@ -396,16 +420,167 @@ async function loadVehiculos() {
         if (error) throw error;
         AppState.vehiculos = data || [];
         const select = DOM.selectVehiculo();
-        select.innerHTML = '<option value="">Selecciona un vehículo...</option>';
+        // REQ 5 — opción por defecto "Sin asignar aún"
+        select.innerHTML = '<option value="sin_asignar">Sin asignar aún</option>';
         data.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
             opt.textContent = `${v.placa}${v.descripcion ? ' — ' + v.descripcion : ''}`;
             select.appendChild(opt);
         });
+        // Escuchar cambio para mostrar/ocultar km inicial
+        if (!select._kmListener) {
+            select.addEventListener('change', onVehiculoSelectChange);
+            select._kmListener = true;
+        }
     } catch (err) {
         console.error('Error cargando vehículos:', err);
     }
+}
+
+// REQ 7/8 — Control dinámico de km según vehículo seleccionado
+function onVehiculoSelectChange() {
+    const select = DOM.selectVehiculo();
+    const kmInput = DOM.inputKmInicial();
+    const esSinAsignar = select.value === 'sin_asignar';
+
+    // Candado km inicial
+    applyKmLock(kmInput, esSinAsignar);
+
+    // Botón condicional "+Agregar Vehículo"
+    let btnAgregar = document.getElementById('btn-agregar-vehiculo');
+    if (!btnAgregar) {
+        btnAgregar = document.createElement('button');
+        btnAgregar.type = 'button';
+        btnAgregar.id = 'btn-agregar-vehiculo';
+        btnAgregar.className = 'btn btn-outline btn-sm btn-add-vehiculo';
+        btnAgregar.innerHTML = '<span class="material-icons-round">add_circle_outline</span> Agregar Vehículo';
+        btnAgregar.addEventListener('click', openNuevoVehiculoModal);
+        select.closest('.form-group').after(btnAgregar);
+    }
+    btnAgregar.classList.toggle('hidden', !esSinAsignar);
+}
+
+// REQ 8 — Aplica/quita el candado de validación del km
+function applyKmLock(kmInput, deshabilitar) {
+    if (deshabilitar) {
+        kmInput.removeAttribute('required');
+        kmInput.value = '';
+        kmInput.setAttribute('disabled', 'disabled');
+        kmInput.closest('.form-group').style.opacity = '0.4';
+        kmInput.closest('.form-group').style.pointerEvents = 'none';
+    } else {
+        kmInput.removeAttribute('disabled');
+        kmInput.setAttribute('required', 'required');
+        kmInput.closest('.form-group').style.opacity = '';
+        kmInput.closest('.form-group').style.pointerEvents = '';
+    }
+}
+
+// ============================================
+// MODAL: NUEVO VEHÍCULO (+ Agregar Vehículo)
+// ============================================
+function openNuevoVehiculoModal() {
+    // Crear modal si no existe
+    let overlay = document.getElementById('modal-nuevo-vehiculo');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modal-nuevo-vehiculo';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-icon" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">
+                        <span class="material-icons-round">two_wheeler</span>
+                    </div>
+                    <h3>Registrar Vehículo</h3>
+                    <p>Ingresa los datos del vehículo que usarás hoy</p>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label><span class="material-icons-round">pin</span> Placa</label>
+                        <input type="text" id="nv-placa" placeholder="Ej. ABC-1234" style="text-transform:uppercase">
+                    </div>
+                    <div class="form-group">
+                        <label><span class="material-icons-round">directions_car</span> Descripción (Marca / Modelo)</label>
+                        <input type="text" id="nv-descripcion" placeholder="Ej. Honda PCX 2022">
+                    </div>
+                    <div class="form-group">
+                        <label><span class="material-icons-round">speed</span> Kilometraje Inicial</label>
+                        <input type="number" id="nv-km" placeholder="Ej. 12500" min="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-nv-cancel" class="btn btn-ghost">Cancelar</button>
+                    <button id="btn-nv-save" class="btn btn-primary">
+                        <span class="material-icons-round">save</span> Guardar Vehículo
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('btn-nv-cancel').addEventListener('click', closeNuevoVehiculoModal);
+        document.getElementById('btn-nv-save').addEventListener('click', handleSaveNuevoVehiculo);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeNuevoVehiculoModal(); });
+    }
+    // Limpiar campos
+    document.getElementById('nv-placa').value = '';
+    document.getElementById('nv-descripcion').value = '';
+    document.getElementById('nv-km').value = '';
+    overlay.classList.add('visible');
+    document.getElementById('nv-placa').focus();
+}
+
+function closeNuevoVehiculoModal() {
+    const overlay = document.getElementById('modal-nuevo-vehiculo');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+async function handleSaveNuevoVehiculo() {
+    const placa = document.getElementById('nv-placa').value.trim().toUpperCase();
+    const descripcion = document.getElementById('nv-descripcion').value.trim();
+    const km = document.getElementById('nv-km').value;
+
+    if (!placa) { showToast('warning', 'Placa Requerida', 'Escribe la placa del vehículo'); return; }
+    if (!km || isNaN(km)) { showToast('warning', 'Km Requerido', 'Ingresa el kilometraje inicial'); return; }
+
+    const btn = document.getElementById('btn-nv-save');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Guardando...';
+
+    try {
+        const { data: nuevo, error } = await supabaseClient
+            .from('vehiculos')
+            .insert({ placa, descripcion, activo: true })
+            .select('id, placa, descripcion')
+            .single();
+        if (error) throw error;
+
+        AppState.nuevoVehiculoId = nuevo.id;
+        // Inyectar en el select y seleccionarlo
+        const select = DOM.selectVehiculo();
+        const opt = document.createElement('option');
+        opt.value = nuevo.id;
+        opt.textContent = `${nuevo.placa}${nuevo.descripcion ? ' — ' + nuevo.descripcion : ''}`;
+        select.appendChild(opt);
+        select.value = nuevo.id;
+
+        // Pre-llenar km inicial y activar candados
+        const kmInput = DOM.inputKmInicial();
+        kmInput.value = km;
+        applyKmLock(kmInput, false);
+
+        // Ocultar botón agregar
+        const btnAgregar = document.getElementById('btn-agregar-vehiculo');
+        if (btnAgregar) btnAgregar.classList.add('hidden');
+
+        closeNuevoVehiculoModal();
+        showToast('success', 'Vehículo Registrado', `${placa} agregado y seleccionado`);
+    } catch (err) {
+        console.error('Error guardando vehículo:', err);
+        showToast('error', 'Error', 'No se pudo registrar el vehículo. Intenta de nuevo.');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">save</span> Guardar Vehículo';
 }
 
 // ============================================
@@ -425,12 +600,18 @@ async function handleLogin(event) {
         return;
     }
 
-    // Validar campos de vehículo si aplica
+    // REQ 5 — Validar campos de vehículo si aplica
     if (usaVehiculo) {
         const vehiculoId = DOM.selectVehiculo().value;
+        const esSinAsignar = vehiculoId === 'sin_asignar';
         const kmInicial = DOM.inputKmInicial().value;
-        if (!vehiculoId || !kmInicial) {
-            showToast('warning', 'Bitácora Requerida', 'Selecciona el vehículo y anota el km inicial');
+        if (!vehiculoId) {
+            showToast('warning', 'Bitácora Requerida', 'Selecciona el vehículo');
+            return;
+        }
+        // Solo exigir km inicial si el vehículo no es "Sin asignar aún"
+        if (!esSinAsignar && !kmInicial) {
+            showToast('warning', 'Bitácora Requerida', 'Anota el km inicial del vehículo');
             return;
         }
     }
@@ -517,21 +698,26 @@ async function handleLogin(event) {
 
                 AppState.currentSession = newSession;
 
-                // Guardar bitácora de vehículo si aplica
+                // REQ 5 — Guardar bitácora de vehículo si aplica (omitir si "Sin asignar aún")
                 if (user.usa_vehiculo) {
                     const vehiculoId = DOM.selectVehiculo().value;
-                    const kmInicial = parseInt(DOM.inputKmInicial().value);
-                    const { data: bv } = await supabaseClient
-                        .from('bitacora_vehiculos')
-                        .insert({
-                            sesion_id: newSession.id,
-                            usuario_id: user.id,
-                            vehiculo_id: vehiculoId,
-                            km_inicial: kmInicial
-                        })
-                        .select()
-                        .single();
-                    AppState.currentBitacora = bv || null;
+                    const esSinAsignar = vehiculoId === 'sin_asignar';
+                    if (!esSinAsignar) {
+                        const kmInicial = parseInt(DOM.inputKmInicial().value);
+                        const { data: bv } = await supabaseClient
+                            .from('bitacora_vehiculos')
+                            .insert({
+                                sesion_id: newSession.id,
+                                usuario_id: user.id,
+                                vehiculo_id: vehiculoId,
+                                km_inicial: kmInicial
+                            })
+                            .select()
+                            .single();
+                        AppState.currentBitacora = bv || null;
+                    } else {
+                        AppState.currentBitacora = null;
+                    }
                 }
 
                 showActiveSession(newSession);
@@ -627,7 +813,7 @@ function openCloseModal() {
     DOM.modalPassword().value = '';
     DOM.modalPassword().focus();
 
-    // Mostrar campo km final si el usuario usa vehículo
+    // REQ 6 — Mostrar campo km final solo si tiene bitácora activa (vehículo asignado real)
     const kmSection = DOM.modalKmSection();
     if (AppState.currentUser && AppState.currentUser.usa_vehiculo && AppState.currentBitacora) {
         kmSection.classList.remove('hidden');
@@ -749,14 +935,15 @@ async function handleCloseSession() {
 // ============================================
 async function loadAdminDashboard() {
     if (!supabaseClient) return;
-
     try {
+        // REQ 3 — Lazy loading: solo cargar stats + filtros + tab activa por defecto (asistencia)
+        AppState.tabsLoaded = {};
         await Promise.all([
             loadStats(),
-            loadSesiones(),
-            loadFilterUsuarios(),
-            loadBitacora()
+            loadFilterUsuarios()
         ]);
+        // Cargar tab de asistencia (activa por defecto) con ventana de 3 días
+        await loadTabAsistencia();
     } catch (error) {
         console.error('Error cargando dashboard:', error);
         showToast('error', 'Error', 'No se pudo cargar el panel administrativo');
@@ -829,8 +1016,41 @@ async function loadFilterUsuarios() {
     }
 }
 
+// REQ 1 — Parseo de fecha seguro (sin problemas de zona horaria)
+function parseDateLocal(dateStr) {
+    // dateStr viene del input[type=date]: 'YYYY-MM-DD'
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
+// REQ 4 — Por defecto traer solo los últimos 3 días
+function getDefaultDateRange() {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date();
+    start.setDate(start.getDate() - 2); // hoy - 2 = 3 días totales
+    start.setHours(0, 0, 0, 0);
+    return { start, end };
+}
+
 async function loadSesiones(filters = {}) {
     try {
+        AppState.currentFilters = filters;
+
+        // REQ 4 — Ventana de 3 días por defecto si no hay filtro de fecha
+        const defaultRange = getDefaultDateRange();
+        const from = filters.fechaInicio
+            ? (() => { const d = parseDateLocal(filters.fechaInicio); d.setHours(0,0,0,0); return d; })()
+            : defaultRange.start;
+        const to = filters.fechaFin
+            ? (() => { const d = parseDateLocal(filters.fechaFin); d.setHours(23,59,59,999); return d; })()
+            : defaultRange.end;
+
+        const page = AppState.currentPage;
+        const size = AppState.pageSize;
+        const rangeFrom = (page - 1) * size;
+        const rangeTo = rangeFrom + size - 1;
+
         let query = supabaseClient
             .from('sesiones')
             .select(`
@@ -847,41 +1067,97 @@ async function loadSesiones(filters = {}) {
                 notas,
                 dispositivo,
                 usuarios!inner(nombre)
-            `)
+            `, { count: 'exact' })
             .order('fecha_inicio', { ascending: false })
-            .limit(200);
-
-        // Aplicar filtros
-        if (filters.fechaInicio) {
-            const startDate = new Date(filters.fechaInicio);
-            startDate.setHours(0, 0, 0, 0);
-            query = query.gte('fecha_inicio', startDate.toISOString());
-        }
-
-        if (filters.fechaFin) {
-            const endDate = new Date(filters.fechaFin);
-            endDate.setHours(23, 59, 59, 999);
-            query = query.lte('fecha_inicio', endDate.toISOString());
-        }
+            // REQ 1 — Filtro de fecha corregido con parseo sin zona horaria
+            .gte('fecha_inicio', from.toISOString())
+            .lte('fecha_inicio', to.toISOString())
+            .range(rangeFrom, rangeTo);
 
         if (filters.usuarioId) {
             query = query.eq('usuario_id', filters.usuarioId);
         }
-
         if (filters.estado) {
             query = query.eq('estado', filters.estado);
         }
 
-        const { data, error } = await query;
-
+        const { data, error, count } = await query;
         if (error) throw error;
 
         AppState.sesiones = data || [];
+        AppState.totalRecords = count || 0;
         renderTable(AppState.sesiones);
+        renderPagination();
     } catch (error) {
         console.error('Error cargando sesiones:', error);
         showToast('error', 'Error', 'No se pudieron cargar los registros');
     }
+}
+
+// REQ 4 — Paginación
+function renderPagination() {
+    const totalPages = Math.ceil(AppState.totalRecords / AppState.pageSize);
+    let container = document.getElementById('pagination-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'pagination-container';
+        container.className = 'pagination-container';
+        const panel = document.getElementById('panel-asistencia');
+        panel.appendChild(container);
+    }
+
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const page = AppState.currentPage;
+    let html = `<div class="pagination">`;
+    html += `<button class="pagination-btn" onclick="goToPage(${page - 1})" ${page === 1 ? 'disabled' : ''}>
+                <span class="material-icons-round">chevron_left</span> Anterior
+             </button>`;
+
+    // Números de página (máx 5 visibles)
+    const startP = Math.max(1, page - 2);
+    const endP = Math.min(totalPages, startP + 4);
+    for (let p = startP; p <= endP; p++) {
+        html += `<button class="pagination-num ${p === page ? 'active' : ''}" onclick="goToPage(${p})">${p}</button>`;
+    }
+
+    html += `<button class="pagination-btn" onclick="goToPage(${page + 1})" ${page === totalPages ? 'disabled' : ''}>
+                Siguiente <span class="material-icons-round">chevron_right</span>
+             </button>`;
+    html += `<span class="pagination-info">${AppState.totalRecords} registros · Página ${page}/${totalPages}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goToPage(page) {
+    const totalPages = Math.ceil(AppState.totalRecords / AppState.pageSize);
+    if (page < 1 || page > totalPages) return;
+    AppState.currentPage = page;
+    loadSesiones(AppState.currentFilters);
+    document.getElementById('panel-asistencia').scrollIntoView({ behavior: 'smooth' });
+}
+
+// Carga de tabs (siempre frescas tras switchAdminTab)
+async function loadTabAsistencia() {
+    AppState.currentPage = 1;
+    showTableLoader('tabla-body', 9, 'Cargando asistencia...');
+    await loadSesiones({});
+    AppState.tabsLoaded.asistencia = true;
+}
+
+async function loadTabBitacora() {
+    // REQ 2 — Bitácora siempre arranca en página 1 con ventana de 3 días
+    AppState.bitacoraPage = 1;
+    await loadBitacora(1);
+    AppState.tabsLoaded.bitacora = true;
+}
+
+async function loadTabUsuarios() {
+    await loadUsuariosAdmin();
+    AppState.tabsLoaded.usuarios = true;
 }
 
 function renderTable(sesiones) {
@@ -911,8 +1187,11 @@ function renderTable(sesiones) {
 
         let horasTrabajadas = '--';
         if (fechaCierre) {
-            const diff = (fechaCierre - fechaInicio) / 1000 / 3600;
-            horasTrabajadas = diff.toFixed(2) + 'h';
+            // REQ 2 — Cálculo correcto: diferencia en minutos totales, no centésimas de hora
+            const totalMinutos = Math.round((fechaCierre - fechaInicio) / 1000 / 60);
+            const hh = Math.floor(totalMinutos / 60);
+            const mm = totalMinutos % 60;
+            horasTrabajadas = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
         }
 
         const nombreUsuario = s.usuarios?.nombre || 'Desconocido';
@@ -975,25 +1254,98 @@ function truncate(str, max) {
 // ============================================
 // BITÁCORA DE VEHÍCULOS
 // ============================================
-async function loadBitacora() {
+// REQ 2 — Bitácora con ventana de 3 días por defecto + paginación propia
+async function loadBitacora(page = 1) {
     if (!supabaseClient) return;
+
+    AppState.bitacoraPage = page;
+
+    // Calcular rango: últimos 3 días por defecto
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 2); // hoy + 2 días atrás = 3 días
+    startDate.setHours(0, 0, 0, 0);
+
+    const size = AppState.bitacoraPageSize;
+    const rangeFrom = (page - 1) * size;
+    const rangeTo = rangeFrom + size - 1;
+
+    showBitacoraLoader(true);
     try {
-        const { data, error } = await supabaseClient
+        const { data, error, count } = await supabaseClient
             .from('bitacora_vehiculos')
             .select(`
                 id, km_inicial, km_final, notas, created_at,
                 usuarios(nombre),
                 vehiculos(placa, descripcion),
                 sesiones(fecha_inicio, fecha_cierre, estado)
-            `)
+            `, { count: 'exact' })
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString())
             .order('created_at', { ascending: false })
-            .limit(200);
+            .range(rangeFrom, rangeTo);
+
         if (error) throw error;
         AppState.bitacora = data || [];
+        AppState.bitacoraTotal = count || 0;
         renderBitacoraTable(AppState.bitacora);
+        renderBitacoraPagination();
     } catch (err) {
         console.error('Error cargando bitácora:', err);
+        showToast('error', 'Error', 'No se pudo cargar la bitácora');
+    } finally {
+        showBitacoraLoader(false);
     }
+}
+
+function showBitacoraLoader(show) {
+    let loader = document.getElementById('bitacora-loader');
+    if (!loader) {
+        loader = document.createElement('tr');
+        loader.id = 'bitacora-loader';
+        loader.innerHTML = `<td colspan="8"><div class="empty-state"><span class="material-icons-round spinning">sync</span><p>Cargando bitácora...</p></div></td>`;
+    }
+    const tbody = DOM.bitacoraBody();
+    if (show) {
+        tbody.innerHTML = '';
+        tbody.appendChild(loader);
+        DOM.bitacoraCount().textContent = 'Cargando...';
+    }
+}
+
+function renderBitacoraPagination() {
+    const totalPages = Math.ceil(AppState.bitacoraTotal / AppState.bitacoraPageSize);
+    let container = document.getElementById('bitacora-pagination');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'bitacora-pagination';
+        container.className = 'pagination-container';
+        document.getElementById('panel-bitacora').appendChild(container);
+    }
+
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const page = AppState.bitacoraPage;
+    const startP = Math.max(1, page - 2);
+    const endP = Math.min(totalPages, startP + 4);
+
+    let html = `<div class="pagination">`;
+    html += `<button class="pagination-btn" onclick="goToBitacoraPage(${page-1})" ${page===1?'disabled':''}><span class="material-icons-round">chevron_left</span> Anterior</button>`;
+    for (let p = startP; p <= endP; p++) {
+        html += `<button class="pagination-num ${p===page?'active':''}" onclick="goToBitacoraPage(${p})">${p}</button>`;
+    }
+    html += `<button class="pagination-btn" onclick="goToBitacoraPage(${page+1})" ${page===totalPages?'disabled':''}> Siguiente <span class="material-icons-round">chevron_right</span></button>`;
+    html += `<span class="pagination-info">${AppState.bitacoraTotal} registros (últimos 3 días) · Pág ${page}/${totalPages}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goToBitacoraPage(page) {
+    const totalPages = Math.ceil(AppState.bitacoraTotal / AppState.bitacoraPageSize);
+    if (page < 1 || page > totalPages) return;
+    loadBitacora(page);
+    document.getElementById('panel-bitacora').scrollIntoView({ behavior: 'smooth' });
 }
 
 function renderBitacoraTable(registros) {
@@ -1041,13 +1393,71 @@ function renderBitacoraTable(registros) {
 // ============================================
 // TABS ADMIN
 // ============================================
+// REQ 1 — Aislamiento estricto: destruir datos de la tab anterior + loader + fetch solo de la nueva
 function switchAdminTab(tab) {
+    if (AppState.activeTab === tab) return; // ya estamos en esa tab
+
+    // 1. Ocultar/mostrar paneles y activar botón de tab
     ['asistencia', 'bitacora', 'usuarios'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', tab !== t);
         document.getElementById(`tab-${t}`).classList.toggle('active', tab === t);
     });
-    if (tab === 'bitacora') loadBitacora();
-    if (tab === 'usuarios') loadUsuariosAdmin();
+
+    // 2. Destruir datos de la tab que se abandona
+    destroyTabData(AppState.activeTab);
+
+    // 3. Marcar tab activa y marcar como NO cargada para forzar nuevo fetch
+    AppState.activeTab = tab;
+    AppState.tabsLoaded[tab] = false;
+
+    // 4. Cargar datos de la nueva tab
+    if (tab === 'asistencia') {
+        showTableLoader('tabla-body', 9, 'Cargando asistencia...');
+        loadTabAsistencia();
+    } else if (tab === 'bitacora') {
+        showBitacoraLoader(true);
+        loadTabBitacora();
+    } else if (tab === 'usuarios') {
+        showUsuariosLoader();
+        loadTabUsuarios();
+    }
+}
+
+// Destruye los datos visuales de una tab cuando se abandona
+function destroyTabData(tab) {
+    if (tab === 'asistencia') {
+        const tbody = DOM.tablaBody();
+        if (tbody) tbody.innerHTML = '';
+        const pg = document.getElementById('pagination-container');
+        if (pg) pg.innerHTML = '';
+        DOM.recordCount().textContent = '0 registros';
+        AppState.sesiones = [];
+    } else if (tab === 'bitacora') {
+        const tbody = DOM.bitacoraBody();
+        if (tbody) tbody.innerHTML = '';
+        const pg = document.getElementById('bitacora-pagination');
+        if (pg) pg.innerHTML = '';
+        DOM.bitacoraCount().textContent = '0 registros';
+        AppState.bitacora = [];
+    } else if (tab === 'usuarios') {
+        const grid = document.getElementById('usuarios-grid');
+        if (grid) grid.innerHTML = '';
+        const cnt = document.getElementById('usuarios-count');
+        if (cnt) cnt.textContent = '0 usuarios';
+    }
+}
+
+// Loader de fila para tablas
+function showTableLoader(tbodyId, colspan, msg = 'Cargando...') {
+    const tbody = document.getElementById(tbodyId);
+    if (tbody) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}"><div class="empty-state"><span class="material-icons-round spinning">sync</span><p>${msg}</p></div></td></tr>`;
+    }
+}
+
+function showUsuariosLoader() {
+    const grid = document.getElementById('usuarios-grid');
+    if (grid) grid.innerHTML = `<div class="empty-state"><span class="material-icons-round spinning">sync</span><p>Cargando usuarios...</p></div>`;
 }
 
 // ============================================
@@ -1195,13 +1605,17 @@ async function toggleVehiculo(userId, currentValue) {
 // FILTROS
 // ============================================
 function handleFilter() {
+    // REQ 1 — Pasar fechas como string 'YYYY-MM-DD'; el parseo seguro ocurre en loadSesiones
     const filters = {
         fechaInicio: DOM.filterFechaInicio().value || null,
         fechaFin: DOM.filterFechaFin().value || null,
         usuarioId: DOM.filterUsuario().value || null,
         estado: DOM.filterEstado().value || null,
     };
+    AppState.currentPage = 1; // REQ 4 — Resetear a página 1 al filtrar
+    AppState.tabsLoaded.asistencia = false;
     loadSesiones(filters);
+    AppState.tabsLoaded.asistencia = true;
 }
 
 function handleClearFilters() {
@@ -1209,7 +1623,9 @@ function handleClearFilters() {
     DOM.filterFechaFin().value = '';
     DOM.filterUsuario().value = '';
     DOM.filterEstado().value = '';
-    loadSesiones();
+    AppState.currentPage = 1;
+    AppState.currentFilters = {};
+    loadSesiones({});
 }
 
 // ============================================
@@ -1246,7 +1662,11 @@ function exportToCSV() {
 
         let horas = '';
         if (fc) {
-            horas = ((fc - fi) / 1000 / 3600).toFixed(2);
+            // REQ 2 — Mismo cálculo correcto en el CSV
+            const totalMin = Math.round((fc - fi) / 1000 / 60);
+            const hh = Math.floor(totalMin / 60);
+            const mm = totalMin % 60;
+            horas = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
         }
 
         const ipM = s.dispositivo ? s.dispositivo.match(/IP: ([\d.]+)/) : null;

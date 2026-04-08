@@ -1544,3 +1544,105 @@ tbody tr:last-child td {
 .toggle-btn.active .toggle-thumb {
     transform: translateX(20px);
 }
+
+/* === PAGINACIÓN === */
+.pagination-container {
+    padding: 16px 0 8px;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.pagination-btn .material-icons-round {
+    font-size: 16px;
+}
+
+.pagination-num {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.pagination-num:hover {
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.pagination-num.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-color: var(--primary);
+    color: white;
+    box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+.pagination-info {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding-left: 8px;
+}
+
+/* === BOTÓN AGREGAR VEHÍCULO === */
+.btn-add-vehiculo {
+    width: 100%;
+    margin-top: 8px;
+    border-style: dashed;
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.05);
+    animation: fadeIn 0.25s ease;
+    transition: var(--transition-base);
+}
+
+.btn-add-vehiculo:hover {
+    background: rgba(99, 102, 241, 0.12);
+    border-color: var(--primary-light);
+    transform: none;
+}
+
+.btn-add-vehiculo .material-icons-round {
+    font-size: 18px;
+}
