@@ -51,6 +51,13 @@ const AppState = {
     sesiones: [],
     vehiculos: [],
     bitacora: [],
+    // Paginación
+    currentPage: 1,
+    pageSize: 30,
+    totalRecords: 0,
+    currentFilters: {},
+    // Lazy loading: qué tabs ya fueron cargadas
+    tabsLoaded: {},
 };
 
 // ============================================
@@ -396,15 +403,37 @@ async function loadVehiculos() {
         if (error) throw error;
         AppState.vehiculos = data || [];
         const select = DOM.selectVehiculo();
-        select.innerHTML = '<option value="">Selecciona un vehículo...</option>';
+        // REQ 5 — opción por defecto "Sin asignar aún"
+        select.innerHTML = '<option value="sin_asignar">Sin asignar aún</option>';
         data.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id;
             opt.textContent = `${v.placa}${v.descripcion ? ' — ' + v.descripcion : ''}`;
             select.appendChild(opt);
         });
+        // Escuchar cambio para mostrar/ocultar km inicial
+        if (!select._kmListener) {
+            select.addEventListener('change', onVehiculoSelectChange);
+            select._kmListener = true;
+        }
     } catch (err) {
         console.error('Error cargando vehículos:', err);
+    }
+}
+
+// REQ 5 — Ocultar km inicial si el vehículo es "Sin asignar aún"
+function onVehiculoSelectChange() {
+    const select = DOM.selectVehiculo();
+    const kmInput = DOM.inputKmInicial();
+    if (select.value === 'sin_asignar') {
+        kmInput.removeAttribute('required');
+        kmInput.value = '';
+        kmInput.closest('.form-group').style.opacity = '0.4';
+        kmInput.closest('.form-group').style.pointerEvents = 'none';
+    } else {
+        kmInput.setAttribute('required', 'required');
+        kmInput.closest('.form-group').style.opacity = '';
+        kmInput.closest('.form-group').style.pointerEvents = '';
     }
 }
 
@@ -425,12 +454,18 @@ async function handleLogin(event) {
         return;
     }
 
-    // Validar campos de vehículo si aplica
+    // REQ 5 — Validar campos de vehículo si aplica
     if (usaVehiculo) {
         const vehiculoId = DOM.selectVehiculo().value;
+        const esSinAsignar = vehiculoId === 'sin_asignar';
         const kmInicial = DOM.inputKmInicial().value;
-        if (!vehiculoId || !kmInicial) {
-            showToast('warning', 'Bitácora Requerida', 'Selecciona el vehículo y anota el km inicial');
+        if (!vehiculoId) {
+            showToast('warning', 'Bitácora Requerida', 'Selecciona el vehículo');
+            return;
+        }
+        // Solo exigir km inicial si el vehículo no es "Sin asignar aún"
+        if (!esSinAsignar && !kmInicial) {
+            showToast('warning', 'Bitácora Requerida', 'Anota el km inicial del vehículo');
             return;
         }
     }
@@ -517,21 +552,26 @@ async function handleLogin(event) {
 
                 AppState.currentSession = newSession;
 
-                // Guardar bitácora de vehículo si aplica
+                // REQ 5 — Guardar bitácora de vehículo si aplica (omitir si "Sin asignar aún")
                 if (user.usa_vehiculo) {
                     const vehiculoId = DOM.selectVehiculo().value;
-                    const kmInicial = parseInt(DOM.inputKmInicial().value);
-                    const { data: bv } = await supabaseClient
-                        .from('bitacora_vehiculos')
-                        .insert({
-                            sesion_id: newSession.id,
-                            usuario_id: user.id,
-                            vehiculo_id: vehiculoId,
-                            km_inicial: kmInicial
-                        })
-                        .select()
-                        .single();
-                    AppState.currentBitacora = bv || null;
+                    const esSinAsignar = vehiculoId === 'sin_asignar';
+                    if (!esSinAsignar) {
+                        const kmInicial = parseInt(DOM.inputKmInicial().value);
+                        const { data: bv } = await supabaseClient
+                            .from('bitacora_vehiculos')
+                            .insert({
+                                sesion_id: newSession.id,
+                                usuario_id: user.id,
+                                vehiculo_id: vehiculoId,
+                                km_inicial: kmInicial
+                            })
+                            .select()
+                            .single();
+                        AppState.currentBitacora = bv || null;
+                    } else {
+                        AppState.currentBitacora = null;
+                    }
                 }
 
                 showActiveSession(newSession);
@@ -627,7 +667,7 @@ function openCloseModal() {
     DOM.modalPassword().value = '';
     DOM.modalPassword().focus();
 
-    // Mostrar campo km final si el usuario usa vehículo
+    // REQ 6 — Mostrar campo km final solo si tiene bitácora activa (vehículo asignado real)
     const kmSection = DOM.modalKmSection();
     if (AppState.currentUser && AppState.currentUser.usa_vehiculo && AppState.currentBitacora) {
         kmSection.classList.remove('hidden');
@@ -749,14 +789,15 @@ async function handleCloseSession() {
 // ============================================
 async function loadAdminDashboard() {
     if (!supabaseClient) return;
-
     try {
+        // REQ 3 — Lazy loading: solo cargar stats + filtros + tab activa por defecto (asistencia)
+        AppState.tabsLoaded = {};
         await Promise.all([
             loadStats(),
-            loadSesiones(),
-            loadFilterUsuarios(),
-            loadBitacora()
+            loadFilterUsuarios()
         ]);
+        // Cargar tab de asistencia (activa por defecto) con ventana de 3 días
+        await loadTabAsistencia();
     } catch (error) {
         console.error('Error cargando dashboard:', error);
         showToast('error', 'Error', 'No se pudo cargar el panel administrativo');
@@ -829,8 +870,41 @@ async function loadFilterUsuarios() {
     }
 }
 
+// REQ 1 — Parseo de fecha seguro (sin problemas de zona horaria)
+function parseDateLocal(dateStr) {
+    // dateStr viene del input[type=date]: 'YYYY-MM-DD'
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
+// REQ 4 — Por defecto traer solo los últimos 3 días
+function getDefaultDateRange() {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date();
+    start.setDate(start.getDate() - 2); // hoy - 2 = 3 días totales
+    start.setHours(0, 0, 0, 0);
+    return { start, end };
+}
+
 async function loadSesiones(filters = {}) {
     try {
+        AppState.currentFilters = filters;
+
+        // REQ 4 — Ventana de 3 días por defecto si no hay filtro de fecha
+        const defaultRange = getDefaultDateRange();
+        const from = filters.fechaInicio
+            ? (() => { const d = parseDateLocal(filters.fechaInicio); d.setHours(0,0,0,0); return d; })()
+            : defaultRange.start;
+        const to = filters.fechaFin
+            ? (() => { const d = parseDateLocal(filters.fechaFin); d.setHours(23,59,59,999); return d; })()
+            : defaultRange.end;
+
+        const page = AppState.currentPage;
+        const size = AppState.pageSize;
+        const rangeFrom = (page - 1) * size;
+        const rangeTo = rangeFrom + size - 1;
+
         let query = supabaseClient
             .from('sesiones')
             .select(`
@@ -847,41 +921,94 @@ async function loadSesiones(filters = {}) {
                 notas,
                 dispositivo,
                 usuarios!inner(nombre)
-            `)
+            `, { count: 'exact' })
             .order('fecha_inicio', { ascending: false })
-            .limit(200);
-
-        // Aplicar filtros
-        if (filters.fechaInicio) {
-            const startDate = new Date(filters.fechaInicio);
-            startDate.setHours(0, 0, 0, 0);
-            query = query.gte('fecha_inicio', startDate.toISOString());
-        }
-
-        if (filters.fechaFin) {
-            const endDate = new Date(filters.fechaFin);
-            endDate.setHours(23, 59, 59, 999);
-            query = query.lte('fecha_inicio', endDate.toISOString());
-        }
+            // REQ 1 — Filtro de fecha corregido con parseo sin zona horaria
+            .gte('fecha_inicio', from.toISOString())
+            .lte('fecha_inicio', to.toISOString())
+            .range(rangeFrom, rangeTo);
 
         if (filters.usuarioId) {
             query = query.eq('usuario_id', filters.usuarioId);
         }
-
         if (filters.estado) {
             query = query.eq('estado', filters.estado);
         }
 
-        const { data, error } = await query;
-
+        const { data, error, count } = await query;
         if (error) throw error;
 
         AppState.sesiones = data || [];
+        AppState.totalRecords = count || 0;
         renderTable(AppState.sesiones);
+        renderPagination();
     } catch (error) {
         console.error('Error cargando sesiones:', error);
         showToast('error', 'Error', 'No se pudieron cargar los registros');
     }
+}
+
+// REQ 4 — Paginación
+function renderPagination() {
+    const totalPages = Math.ceil(AppState.totalRecords / AppState.pageSize);
+    let container = document.getElementById('pagination-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'pagination-container';
+        container.className = 'pagination-container';
+        const panel = document.getElementById('panel-asistencia');
+        panel.appendChild(container);
+    }
+
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const page = AppState.currentPage;
+    let html = `<div class="pagination">`;
+    html += `<button class="pagination-btn" onclick="goToPage(${page - 1})" ${page === 1 ? 'disabled' : ''}>
+                <span class="material-icons-round">chevron_left</span> Anterior
+             </button>`;
+
+    // Números de página (máx 5 visibles)
+    const startP = Math.max(1, page - 2);
+    const endP = Math.min(totalPages, startP + 4);
+    for (let p = startP; p <= endP; p++) {
+        html += `<button class="pagination-num ${p === page ? 'active' : ''}" onclick="goToPage(${p})">${p}</button>`;
+    }
+
+    html += `<button class="pagination-btn" onclick="goToPage(${page + 1})" ${page === totalPages ? 'disabled' : ''}>
+                Siguiente <span class="material-icons-round">chevron_right</span>
+             </button>`;
+    html += `<span class="pagination-info">${AppState.totalRecords} registros · Página ${page}/${totalPages}</span>`;
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function goToPage(page) {
+    const totalPages = Math.ceil(AppState.totalRecords / AppState.pageSize);
+    if (page < 1 || page > totalPages) return;
+    AppState.currentPage = page;
+    loadSesiones(AppState.currentFilters);
+    document.getElementById('panel-asistencia').scrollIntoView({ behavior: 'smooth' });
+}
+
+// REQ 3 — Lazy loading de tabs
+async function loadTabAsistencia() {
+    AppState.currentPage = 1;
+    await loadSesiones({});
+    AppState.tabsLoaded.asistencia = true;
+}
+
+async function loadTabBitacora() {
+    await loadBitacora();
+    AppState.tabsLoaded.bitacora = true;
+}
+
+async function loadTabUsuarios() {
+    await loadUsuariosAdmin();
+    AppState.tabsLoaded.usuarios = true;
 }
 
 function renderTable(sesiones) {
@@ -911,8 +1038,11 @@ function renderTable(sesiones) {
 
         let horasTrabajadas = '--';
         if (fechaCierre) {
-            const diff = (fechaCierre - fechaInicio) / 1000 / 3600;
-            horasTrabajadas = diff.toFixed(2) + 'h';
+            // REQ 2 — Cálculo correcto: diferencia en minutos totales, no centésimas de hora
+            const totalMinutos = Math.round((fechaCierre - fechaInicio) / 1000 / 60);
+            const hh = Math.floor(totalMinutos / 60);
+            const mm = totalMinutos % 60;
+            horasTrabajadas = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
         }
 
         const nombreUsuario = s.usuarios?.nombre || 'Desconocido';
@@ -1041,13 +1171,20 @@ function renderBitacoraTable(registros) {
 // ============================================
 // TABS ADMIN
 // ============================================
+// REQ 3 — Lazy loading: solo cargar datos al hacer clic en la pestaña
 function switchAdminTab(tab) {
     ['asistencia', 'bitacora', 'usuarios'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', tab !== t);
         document.getElementById(`tab-${t}`).classList.toggle('active', tab === t);
     });
-    if (tab === 'bitacora') loadBitacora();
-    if (tab === 'usuarios') loadUsuariosAdmin();
+    // Cargar solo si aún no se han cargado los datos de esa tab
+    if (tab === 'asistencia' && !AppState.tabsLoaded.asistencia) {
+        loadTabAsistencia();
+    } else if (tab === 'bitacora' && !AppState.tabsLoaded.bitacora) {
+        loadTabBitacora();
+    } else if (tab === 'usuarios' && !AppState.tabsLoaded.usuarios) {
+        loadTabUsuarios();
+    }
 }
 
 // ============================================
@@ -1195,13 +1332,17 @@ async function toggleVehiculo(userId, currentValue) {
 // FILTROS
 // ============================================
 function handleFilter() {
+    // REQ 1 — Pasar fechas como string 'YYYY-MM-DD'; el parseo seguro ocurre en loadSesiones
     const filters = {
         fechaInicio: DOM.filterFechaInicio().value || null,
         fechaFin: DOM.filterFechaFin().value || null,
         usuarioId: DOM.filterUsuario().value || null,
         estado: DOM.filterEstado().value || null,
     };
+    AppState.currentPage = 1; // REQ 4 — Resetear a página 1 al filtrar
+    AppState.tabsLoaded.asistencia = false;
     loadSesiones(filters);
+    AppState.tabsLoaded.asistencia = true;
 }
 
 function handleClearFilters() {
@@ -1209,7 +1350,9 @@ function handleClearFilters() {
     DOM.filterFechaFin().value = '';
     DOM.filterUsuario().value = '';
     DOM.filterEstado().value = '';
-    loadSesiones();
+    AppState.currentPage = 1;
+    AppState.currentFilters = {};
+    loadSesiones({});
 }
 
 // ============================================
@@ -1246,7 +1389,11 @@ function exportToCSV() {
 
         let horas = '';
         if (fc) {
-            horas = ((fc - fi) / 1000 / 3600).toFixed(2);
+            // REQ 2 — Mismo cálculo correcto en el CSV
+            const totalMin = Math.round((fc - fi) / 1000 / 60);
+            const hh = Math.floor(totalMin / 60);
+            const mm = totalMin % 60;
+            horas = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
         }
 
         const ipM = s.dispositivo ? s.dispositivo.match(/IP: ([\d.]+)/) : null;
