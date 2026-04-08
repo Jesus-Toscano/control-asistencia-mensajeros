@@ -69,6 +69,7 @@ ALTER TABLE bitacora_vehiculos ENABLE ROW LEVEL SECURITY;
 -- Políticas permisivas (usando anon key)
 CREATE POLICY "Permitir lectura usuarios" ON usuarios FOR SELECT USING (true);
 CREATE POLICY "Permitir actualizar usuarios" ON usuarios FOR UPDATE USING (true);
+CREATE POLICY "Permitir insertar usuarios" ON usuarios FOR INSERT WITH CHECK (true);
 CREATE POLICY "Permitir lectura sesiones" ON sesiones FOR SELECT USING (true);
 CREATE POLICY "Permitir insertar sesiones" ON sesiones FOR INSERT WITH CHECK (true);
 CREATE POLICY "Permitir actualizar sesiones" ON sesiones FOR UPDATE USING (true);

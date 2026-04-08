@@ -1566,6 +1566,113 @@ function exportBitacoraToCSV() {
 }
 
 // ============================================
+// MODAL: CREAR USUARIO (Admin panel)
+// ============================================
+function openAdminNuevoUsuarioModal() {
+    let overlay = document.getElementById('modal-admin-usuario');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modal-admin-usuario';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal">
+                <form id="form-nuevo-usuario">
+                    <div class="modal-header">
+                        <div class="modal-icon" style="background:linear-gradient(135deg,#3b82f6,#2563eb)">
+                            <span class="material-icons-round">person_add</span>
+                        </div>
+                        <h3>Registar Nuevo Usuario</h3>
+                        <p>Crea cuenta para un nuevo administrador o mensajero</p>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label><span class="material-icons-round">badge</span> Nombre Completo</label>
+                            <input type="text" id="adm-nu-nombre" required placeholder="Ej. Juan Pérez">
+                        </div>
+                        <div class="form-group">
+                            <label><span class="material-icons-round">email</span> Correo Electrónico / Usuario</label>
+                            <input type="email" id="adm-nu-email" placeholder="Opcional (si aplica)">
+                        </div>
+                        <div class="form-group">
+                            <label><span class="material-icons-round">lock</span> Contraseña</label>
+                            <input type="password" id="adm-nu-password" required placeholder="Mínimo 4 caracteres" minlength="4">
+                        </div>
+                        <div class="form-group">
+                            <label><span class="material-icons-round">shield</span> Rol</label>
+                            <select id="adm-nu-rol" required>
+                                <option value="mensajero">Mensajero</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-top:15px;background:rgba(0,0,0,0.03);padding:12px;border-radius:var(--radius);">
+                            <label style="flex:1;margin-bottom:0;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="document.getElementById('adm-nu-vehiculo-toggle').click()">
+                                <span class="material-icons-round">two_wheeler</span> ¿Usa vehículo por defecto?
+                            </label>
+                            <button type="button" id="adm-nu-vehiculo-toggle" class="toggle-btn" title="Usa vehículo" onclick="this.classList.toggle('active')">
+                                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="btn-adm-nu-cancel" class="btn btn-ghost">Cancelar</button>
+                        <button type="submit" id="btn-adm-nu-save" class="btn btn-primary">
+                            <span class="material-icons-round">save</span> Guardar Usuario
+                        </button>
+                    </div>
+                </form>
+            </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('btn-adm-nu-cancel').addEventListener('click', () => overlay.classList.remove('visible'));
+        document.getElementById('form-nuevo-usuario').addEventListener('submit', handleAdminSaveNuevoUsuario);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('visible'); });
+    }
+    
+    document.getElementById('form-nuevo-usuario').reset();
+    document.getElementById('adm-nu-vehiculo-toggle').classList.remove('active'); // Por defecto false
+    overlay.classList.add('visible');
+    document.getElementById('adm-nu-nombre').focus();
+}
+
+async function handleAdminSaveNuevoUsuario(e) {
+    e.preventDefault();
+    const nombre = document.getElementById('adm-nu-nombre').value.trim();
+    const password = document.getElementById('adm-nu-password').value;
+    const rol = document.getElementById('adm-nu-rol').value;
+    const usaVehiculo = document.getElementById('adm-nu-vehiculo-toggle').classList.contains('active');
+
+    const btn = document.getElementById('btn-adm-nu-save');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-icons-round spinning">sync</span> Guardando...';
+
+    try {
+        const { error } = await supabaseClient
+            .from('usuarios')
+            .insert({
+                nombre: nombre,
+                password: password,
+                rol: rol,
+                usa_vehiculo: usaVehiculo,
+                activo: true
+            });
+            
+        if (error) throw error;
+
+        document.getElementById('modal-admin-usuario').classList.remove('visible');
+        showToast('success', 'Usuario Registrado', `${nombre} ha sido creado exitosamente.`);
+        
+        // Actualiza el listado en tiempo real en la UI actual
+        await loadUsuariosAdmin();
+
+    } catch (err) {
+        console.error('Error al guardar usuario:', err);
+        showToast('error', 'Error', 'No se pudo crear el usuario. Verifica permisos de Insert.');
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-icons-round">save</span> Guardar Usuario';
+}
+
+// ============================================
 // GESTIÓN DE USUARIOS (PANEL ADMIN)
 // ============================================
 async function loadUsuariosAdmin() {
